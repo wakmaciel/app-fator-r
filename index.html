@@ -3,12 +3,11 @@
 
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="theme-color" content="#0F1B2D">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fator R">
 
   <link rel="apple-touch-icon" href="icon-fator-r.ico">
@@ -50,13 +49,22 @@
       margin: 0;
       padding: 0;
       background: var(--bg);
+      touch-action: pan-x pan-y;
+      overscroll-behavior-y: none;
     }
 
     body {
       color: var(--text);
       font-family: var(--font-body);
       -webkit-font-smoothing: antialiased;
-      overscroll-behavior-y: none;
+    }
+
+    button,
+    a,
+    input,
+    select,
+    textarea {
+      touch-action: manipulation;
     }
 
     #app {
@@ -252,6 +260,7 @@
 
     .field input[type=number],
     .field input[type=text],
+    .field input[type=month],
     .field select {
       width: 100%;
       background: var(--bg-input);
@@ -260,14 +269,14 @@
       padding: 12px 13px;
       color: var(--text);
       font-family: var(--font-mono);
-      font-size: 15.5px;
+      font-size: 16px !important;
       -webkit-appearance: none;
       appearance: none;
     }
 
     .field select {
       font-family: var(--font-body);
-      font-size: 14.5px;
+      font-size: 16px !important;
     }
 
     .field input:focus,
@@ -528,7 +537,7 @@
       honorarioContador: 149.90, dasMei: 80.90
     };
     const SEED_LOANS = [
-      { id: 'l1', nome: 'Capital de Giro - Banco X', valorContratado: 20000, nParcelas: 24, valorParcela: 670, parcelasPagas: 3 }
+      { id: 'l1', nome: 'Capital de Giro - Banco X', valorContratado: 20000, nParcelas: 24, valorParcela: 670, parcelasPagas: 3, mesInicio: '' }
     ];
     function mkMonth(key, regime, faturamento, proLabore, dasPago) {
       return { key, regime, faturamento, proLabore, outrasDespesas: 0, dasPago: dasPago ?? null, lucroDistribuidoOverride: null };
@@ -578,10 +587,12 @@
     const fmtPct = n => ((isFinite(n) ? n : 0) * 100).toFixed(1).replace('.', ',') + '%';
     function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
     function monthLabel(key) {
+      if (key === 'sim') return 'Simulação';
       const [y, m] = key.split('-').map(Number);
       return MES_ABR[m - 1] + '/' + String(y).slice(2);
     }
     function monthLabelExt(key) {
+      if (key === 'sim') return 'Simulação';
       const [y, m] = key.split('-').map(Number);
       return MES_EXT[m - 1] + ' / ' + y;
     }
@@ -595,8 +606,16 @@
       for (const r of table) { if (rbt12 >= r[0]) row = r; else break; }
       return row;
     }
-    function loansTotalAtivo(loans) {
-      return loans.filter(l => (l.parcelasPagas || 0) < (l.nParcelas || 0)).reduce((s, l) => s + (Number(l.valorParcela) || 0), 0);
+
+    // NOVA LOGICA DE EMPRESTIMOS COM MÊS DE INICIO
+    function loansTotalAtivo(loans, monthKey) {
+      return loans.filter(l => {
+        // Se o empréstimo tem mês de inicio e o mês atual é menor, ele não conta.
+        if (monthKey && l.mesInicio && monthKey !== 'sim' && monthKey < l.mesInicio) {
+          return false;
+        }
+        return (l.parcelasPagas || 0) < (l.nParcelas || 0);
+      }).reduce((s, l) => s + (Number(l.valorParcela) || 0), 0);
     }
 
     /* ============================== MOTOR DE CÁLCULO ============================== */
@@ -638,9 +657,12 @@
         lucroDisponivel, lucroDistribuido, saldoCaixa, proLaboreSugerido
       };
     }
+
     function computeAll() {
-      const loansTotal = loansTotalAtivo(STATE.loans);
-      return STATE.months.map((m, idx) => computeMonth(STATE.months, idx, STATE.params, loansTotal));
+      return STATE.months.map((m, idx) => {
+        const loansTotal = loansTotalAtivo(STATE.loans, m.key);
+        return computeMonth(STATE.months, idx, STATE.params, loansTotal);
+      });
     }
 
     /* ============================== GAUGE SVG ============================== */
@@ -768,7 +790,7 @@
       if (!STATE.months.find(m => m.key === LANCAR_KEY)) LANCAR_KEY = STATE.months[STATE.months.length - 1].key;
       const idx = STATE.months.findIndex(m => m.key === LANCAR_KEY);
       const m = STATE.months[idx];
-      const loansTotal = loansTotalAtivo(STATE.loans);
+      const loansTotal = loansTotalAtivo(STATE.loans, m.key);
       const c = computeMonth(STATE.months, idx, STATE.params, loansTotal);
       const isLast = idx === STATE.months.length - 1;
 
@@ -855,10 +877,11 @@
         if (m.regime === 'MEI') m.proLabore = 0;
         await persist(); renderLancar();
       }));
+
       const bindNum = (id, field, allowNull) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.addEventListener('change', async () => {
+        el.addEventListener('change', async () => { // Alterado de input para change
           const raw = el.value;
           if (allowNull && raw === '') { m[field] = null; }
           else { m[field] = raw === '' ? 0 : parseFloat(raw); }
@@ -891,7 +914,7 @@
       const lastMonth = STATE.months[lastIdx];
       const virtualMonths = STATE.months.concat([mkMonth('sim', lastMonth.regime, simFat, simFat * STATE.params.fatorRMeta)]);
       const vIdx = virtualMonths.length - 1;
-      const loansTotal = loansTotalAtivo(STATE.loans);
+      const loansTotal = loansTotalAtivo(STATE.loans, 'sim');
       const c = computeMonth(virtualMonths, vIdx, STATE.params, loansTotal);
       const totalFixo = c.dasUsado + c.inss + c.contador + loansTotal + simOutras;
       const lucroDisp = simFat - c.proLaboreSugerido - totalFixo;
@@ -939,6 +962,7 @@
       </div>
     </div>
   `;
+      // Alterado de input para change
       document.getElementById('sim-fat').addEventListener('change', e => { simFat = parseFloat(e.target.value) || 0; renderRetirar(); });
       document.getElementById('sim-outras').addEventListener('change', e => { simOutras = parseFloat(e.target.value) || 0; renderRetirar(); });
     }
@@ -1000,7 +1024,10 @@
             <div class="field"><label>Nº parcelas</label><input type="number" data-loan="${l.id}" data-field="nParcelas" value="${l.nParcelas || 0}"></div>
             <div class="field"><label>Valor da parcela</label><input type="number" data-loan="${l.id}" data-field="valorParcela" value="${l.valorParcela || 0}"></div>
           </div>
-          <div class="field"><label>Parcelas pagas</label><input type="number" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>
+          <div class="two-col">
+            <div class="field"><label>Parcelas pagas</label><input type="number" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>
+            <div class="field"><label>Mês de Início</label><input type="month" data-loan="${l.id}" data-field="mesInicio" value="${l.mesInicio || ''}"></div>
+          </div>
           <div class="row"><div class="l">Saldo devedor estimado</div><div class="v dim">${fmtBRL(saldo)} (${restantes} restantes)</div></div>
         </div>`;
       }).join('') || '<div class="card empty">Nenhum empréstimo cadastrado.</div>'}
@@ -1013,7 +1040,7 @@
       <div class="note">Isso substitui faturamento, pró-labore e empréstimos pelos dados originais do seu PGDAS-D. Não pode ser desfeito.</div>
     </div>
   `;
-
+      // Alterado de input para change
       const bindParam = (id, field, isPct) => document.getElementById(id).addEventListener('change', async e => {
         const v = parseFloat(e.target.value) || 0;
         p[field] = isPct ? v / 100 : v;
@@ -1026,10 +1053,12 @@
       bindParam('p-contador', 'honorarioContador', false);
       bindParam('p-dasmei', 'dasMei', false);
 
+      // Alterado de input para change
       document.querySelectorAll('[data-loan]').forEach(el => el.addEventListener('change', async () => {
         const loan = STATE.loans.find(l => l.id === el.dataset.loan);
         const f = el.dataset.field;
-        loan[f] = (f === 'nome') ? el.value : (parseFloat(el.value) || 0);
+        // Os campos 'nome' e 'mesInicio' são strings e não podem ser forçados como números pelo parseFloat
+        loan[f] = (f === 'nome' || f === 'mesInicio') ? el.value : (parseFloat(el.value) || 0);
         await persist();
       }));
       document.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', async () => {
@@ -1037,7 +1066,8 @@
         await persist(); renderAjustes();
       }));
       document.getElementById('btn-add-loan').addEventListener('click', async () => {
-        STATE.loans.push({ id: 'l' + Date.now(), nome: 'Novo empréstimo', valorContratado: 0, nParcelas: 1, valorParcela: 0, parcelasPagas: 0 });
+        // Novo campo mesInicio adicionado ao objeto base
+        STATE.loans.push({ id: 'l' + Date.now(), nome: 'Novo empréstimo', valorContratado: 0, nParcelas: 1, valorParcela: 0, parcelasPagas: 0, mesInicio: '' });
         await persist(); renderAjustes();
       });
       document.getElementById('btn-reset').addEventListener('click', async () => {
