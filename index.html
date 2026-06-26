@@ -858,7 +858,7 @@
       const bindNum = (id, field, allowNull) => {
         const el = document.getElementById(id);
         if (!el) return;
-        el.addEventListener('input', async () => {
+        el.addEventListener('change', async () => {
           const raw = el.value;
           if (allowNull && raw === '') { m[field] = null; }
           else { m[field] = raw === '' ? 0 : parseFloat(raw); }
@@ -939,8 +939,8 @@
       </div>
     </div>
   `;
-      document.getElementById('sim-fat').addEventListener('input', e => { simFat = parseFloat(e.target.value) || 0; renderRetirar(); });
-      document.getElementById('sim-outras').addEventListener('input', e => { simOutras = parseFloat(e.target.value) || 0; renderRetirar(); });
+      document.getElementById('sim-fat').addEventListener('change', e => { simFat = parseFloat(e.target.value) || 0; renderRetirar(); });
+      document.getElementById('sim-outras').addEventListener('change', e => { simOutras = parseFloat(e.target.value) || 0; renderRetirar(); });
     }
 
     /* ============================== TAB: HISTÓRICO ============================== */
@@ -1014,7 +1014,7 @@
     </div>
   `;
 
-      const bindParam = (id, field, isPct) => document.getElementById(id).addEventListener('input', async e => {
+      const bindParam = (id, field, isPct) => document.getElementById(id).addEventListener('change', async e => {
         const v = parseFloat(e.target.value) || 0;
         p[field] = isPct ? v / 100 : v;
         await persist();
@@ -1026,7 +1026,7 @@
       bindParam('p-contador', 'honorarioContador', false);
       bindParam('p-dasmei', 'dasMei', false);
 
-      document.querySelectorAll('[data-loan]').forEach(el => el.addEventListener('input', async () => {
+      document.querySelectorAll('[data-loan]').forEach(el => el.addEventListener('change', async () => {
         const loan = STATE.loans.find(l => l.id === el.dataset.loan);
         const f = el.dataset.field;
         loan[f] = (f === 'nome') ? el.value : (parseFloat(el.value) || 0);
