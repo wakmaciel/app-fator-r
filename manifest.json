@@ -2,19 +2,22 @@
   "name": "Fator R - Gerenciador",
   "short_name": "Fator R",
   "start_url": "index.html",
+  "scope": ".",
   "display": "standalone",
-  "background_color": "#0F1B2D",
-  "theme-color": "#0F1B2D",
+  "background_color": "#150B2E",
+  "theme_color": "#150B2E",
   "icons": [
     {
-      "src": "icon-fator-r.ico",
+      "src": "icons/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
-      "src": "icon-fator-r.ico",
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }
