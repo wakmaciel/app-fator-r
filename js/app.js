@@ -20,7 +20,7 @@ function ensureActiveMonth() {
 /* ============================== TABS / NAV ============================== */
 const TABS = [
   { id: 'inicio', label: 'Início', icon: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9"/>' },
-  { id: 'lancar', label: 'Lançar', icon: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/>' },
+  { id: 'lancar', label: 'Mês', icon: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>' },
   { id: 'historico', label: 'Histórico', icon: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>' },
   { id: 'ajustes', label: 'Ajustes', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
 ];
@@ -81,7 +81,7 @@ function openNovaDespesaSheet(monthKeyPref) {
     <div class="field"><label>Mês</label><select id="nd-mes">${options}</select></div>
     <div class="field"><label>Categoria</label><select id="nd-cat">${catOptions}</select></div>
     <div class="field"><label>Descrição</label><input type="text" id="nd-desc" placeholder="Ex: assinatura Cypress Cloud"></div>
-    <div class="field"><label>Valor</label><input type="text" inputmode="decimal" id="nd-valor" placeholder="0,00"></div>
+    <div class="field"><label>Valor</label><input type="text" inputmode="decimal" id="nd-valor" placeholder="20,00"></div>
     <button class="btn btn-primary sheet-action" id="nd-confirmar">Adicionar despesa</button>
     <button class="btn btn-ghost sheet-action" id="sheet-cancelar">Cancelar</button>
   `);
@@ -141,8 +141,13 @@ function renderInicio() {
   if (isME) {
     const proj = projectNextMonth(STATE.months, lastIdx, STATE.params);
     const economiaInss = Math.max(proj.folga, 0) * STATE.params.aliqInss;
-    let variant, titulo, msg;
-    if (proj.folga < 0) {
+    let variant, titulo, msg, showBadges = true;
+    if (proj.sf <= 0) {
+      variant = 'info';
+      titulo = '📋 Sem faturamento lançado ainda';
+      msg = `Lance o faturamento e o pró-labore deste mês para ver a projeção do Fator R e quanto retirar para continuar no Anexo III.`;
+      showBadges = false;
+    } else if (proj.folga < 0) {
       variant = 'danger';
       titulo = '⚠️ Risco de cair no Anexo V';
       msg = `Faltam <strong>${fmtBRL(-proj.folga)}</strong> de pró-labore neste mês para manter o Fator R ≥ 28% e seguir no Anexo III no mês que vem. Mínimo necessário este mês: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>.`;
@@ -159,17 +164,18 @@ function renderInicio() {
     <div class="alert alert-${variant}">
       <div class="alert-title">${titulo}</div>
       <div class="alert-body">${msg}</div>
+      ${showBadges ? `
       <div class="alert-rows">
         <div class="row"><div class="l">Anexo vigente neste mês (usado no DAS)</div><div class="v"><span class="badge ${lastC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${lastC.anexo}</span></div></div>
         <div class="row"><div class="l">Projeção para o mês que vem</div><div class="v"><span class="badge ${proj.anexoProjetado === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${proj.anexoProjetado}</span></div></div>
-      </div>
+      </div>` : ''}
       <button class="btn btn-secondary" id="btn-ir-lancar">Ajustar pró-labore deste mês →</button>
     </div>`;
   } else {
     alertHTML = `
     <div class="alert alert-info">
       <div class="alert-title">📌 Você está como MEI</div>
-      <div class="alert-body">Enquanto MEI não existe Fator R nem Anexo III/V — só o DAS-MEI fixo. Quando migrar para ME, troque o regime do mês na aba Lançar: a partir dali o pró-labore passa a contar para o Fator R.</div>
+      <div class="alert-body">Enquanto MEI não existe Fator R nem Anexo III/V — só o DAS-MEI fixo. Quando migrar para ME, troque o regime do mês na aba Mês: a partir dali o pró-labore passa a contar para o Fator R.</div>
     </div>`;
   }
 
@@ -305,7 +311,7 @@ function renderLancar() {
   const c = computeMonth(STATE.months, idx, STATE.params, loansTotal);
   const proj = m.regime === 'ME' ? projectNextMonth(STATE.months, idx, STATE.params) : null;
 
-  setTopbar('Lançar mês', monthLabelExt(m.key));
+  setTopbar('Mês', monthLabelExt(m.key));
 
   const options = STATE.months.map(mm => `<option value="${mm.key}" ${mm.key === m.key ? 'selected' : ''}>${monthLabel(mm.key)} ${mm.regime === 'MEI' ? '(MEI)' : ''}</option>`).join('');
 
@@ -328,24 +334,24 @@ function renderLancar() {
     <div class="card">
       <div class="field">
         <label>Faturamento do mês</label>
-        <input type="text" inputmode="decimal" id="f-fat" value="${m.faturamento}">
+        <input type="text" inputmode="decimal" id="f-fat" value="${numToInputBlankZero(m.faturamento)}" placeholder="20,00">
       </div>
       ${m.regime === 'ME' ? `
         <div class="field">
           <label>Pró-labore retirado</label>
-          <input type="text" inputmode="decimal" id="f-pl" value="${m.proLabore}">
+          <input type="text" inputmode="decimal" id="f-pl" value="${numToInputBlankZero(m.proLabore)}" placeholder="20,00">
           <div class="hint ${proj && proj.folga < 0 ? 'hint-danger' : 'hint-ok'}">
             ${proj ? `Mínimo p/ manter Anexo III no mês que vem: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>` : ''}
           </div>
         </div>
         <div class="field">
           <label>DAS informado pelo contador (em branco = usar estimativa)</label>
-          <input type="text" inputmode="decimal" id="f-das" value="${m.dasPago ?? ''}" placeholder="${fmtBRL(c.dasEstimado)} (estimado)">
+          <input type="text" inputmode="decimal" id="f-das" value="${numToInput(m.dasPago)}" placeholder="${fmtBRL(c.dasEstimado)} (estimado)">
         </div>
       ` : `
         <div class="field">
           <label>DAS-MEI pago (em branco = usar o valor padrão)</label>
-          <input type="text" inputmode="decimal" id="f-das" value="${m.dasPago ?? ''}" placeholder="${fmtBRL(STATE.params.dasMei)} (padrão)">
+          <input type="text" inputmode="decimal" id="f-das" value="${numToInput(m.dasPago)}" placeholder="${fmtBRL(STATE.params.dasMei)} (padrão)">
         </div>
       `}
     </div>
@@ -379,7 +385,7 @@ function renderLancar() {
     <div class="card">
       <div class="field">
         <label>Lucro distribuído este mês (em branco = distribuir tudo)</label>
-        <input type="text" inputmode="decimal" id="f-dist" value="${m.lucroDistribuidoOverride ?? ''}" placeholder="${fmtBRL(Math.max(c.lucroDisponivel, 0))} (automático)">
+        <input type="text" inputmode="decimal" id="f-dist" value="${numToInput(m.lucroDistribuidoOverride)}" placeholder="${fmtBRL(Math.max(c.lucroDisponivel, 0))} (automático)">
       </div>
       <div class="row"><div class="l">Saldo retido em caixa</div><div class="v">${fmtBRL(c.saldoCaixa)}</div></div>
     </div>
@@ -435,7 +441,7 @@ function renderHistorico() {
   document.getElementById('content').innerHTML = `
     <h2 class="section-title">Todos os meses</h2>
     <div class="card tight">${rows || '<div class="empty">Nenhum mês cadastrado ainda. Toque no + para lançar o primeiro.</div>'}</div>
-    <div class="note">Toque em um mês para abrir e editar na aba Lançar.</div>
+    <div class="note">Toque em um mês para abrir e editar na aba Mês.</div>
   `;
   document.querySelectorAll('.month-list-item').forEach(el => el.addEventListener('click', () => {
     goTo('lancar', el.dataset.key);
@@ -457,10 +463,10 @@ function renderAjustes() {
 
     <h2 class="section-title">Parâmetros gerais</h2>
     <div class="card">
-      <div class="field"><label>Salário mínimo nacional</label><input type="text" inputmode="decimal" id="p-sal" value="${p.salarioMinimo}"></div>
-      <div class="field"><label>Teto do INSS</label><input type="text" inputmode="decimal" id="p-teto" value="${p.tetoInss}"></div>
-      <div class="field"><label>Alíquota INSS sobre pró-labore (%)</label><input type="text" inputmode="decimal" id="p-aliqinss" value="${(p.aliqInss * 100).toFixed(2)}"></div>
-      <div class="field"><label>Meta do Fator R (%)</label><input type="text" inputmode="decimal" id="p-meta" value="${(p.fatorRMeta * 100).toFixed(2)}"></div>
+      <div class="field"><label>Salário mínimo nacional</label><input type="text" inputmode="decimal" id="p-sal" value="${numToInput(p.salarioMinimo)}" placeholder="20,00"></div>
+      <div class="field"><label>Teto do INSS</label><input type="text" inputmode="decimal" id="p-teto" value="${numToInput(p.tetoInss)}" placeholder="20,00"></div>
+      <div class="field"><label>Alíquota INSS sobre pró-labore (%)</label><input type="text" inputmode="decimal" id="p-aliqinss" value="${numToInput(parseFloat((p.aliqInss * 100).toFixed(2)))}" placeholder="20,00"></div>
+      <div class="field"><label>Meta do Fator R (%)</label><input type="text" inputmode="decimal" id="p-meta" value="${numToInput(parseFloat((p.fatorRMeta * 100).toFixed(2)))}" placeholder="20,00"></div>
       <div class="field">
         <label>Atividade do MEI (preenche o DAS-MEI padrão)</label>
         <select id="p-atividade-mei">
@@ -470,7 +476,7 @@ function renderAjustes() {
           <option value="misto">Comércio e Serviço (R$87,05)</option>
         </select>
       </div>
-      <div class="field"><label>DAS-MEI fixo</label><input type="text" inputmode="decimal" id="p-dasmei" value="${p.dasMei}"></div>
+      <div class="field"><label>DAS-MEI fixo</label><input type="text" inputmode="decimal" id="p-dasmei" value="${numToInput(p.dasMei)}" placeholder="20,00"></div>
       <div class="note" style="margin-top:0;">Honorários contábeis não são mais um valor fixo aqui — lance-os como despesa (categoria "Contabilidade") sempre que pagar, assim o valor acompanha quando o preço do seu contador mudar.</div>
     </div>
 
@@ -484,7 +490,7 @@ function renderAjustes() {
           <div class="field"><label>Nome</label><input type="text" data-loan="${l.id}" data-field="nome" value="${esc(l.nome)}"></div>
           <div class="two-col">
             <div class="field"><label>Nº parcelas</label><input type="number" step="1" data-loan="${l.id}" data-field="nParcelas" value="${l.nParcelas || 0}"></div>
-            <div class="field"><label>Valor da parcela</label><input type="text" inputmode="decimal" data-loan="${l.id}" data-field="valorParcela" value="${l.valorParcela || 0}"></div>
+            <div class="field"><label>Valor da parcela</label><input type="text" inputmode="decimal" data-loan="${l.id}" data-field="valorParcela" value="${numToInputBlankZero(l.valorParcela)}" placeholder="20,00"></div>
           </div>
           <div class="two-col">
             <div class="field"><label>Parcelas pagas</label><input type="number" step="1" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>

@@ -80,6 +80,18 @@ function parseBRNumber(input) {
   return parseFloat(s);
 }
 
+/* Mostra o número já com vírgula (o jeito que a pessoa vai digitar de volta). */
+function numToInput(n) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  return String(n).replace('.', ',');
+}
+/* Igual acima, mas mostra o campo vazio (com o placeholder "20,00" de exemplo)
+   quando o valor é zero — assim não fica um "0" cru parecendo um valor real. */
+function numToInputBlankZero(n) {
+  if (!n) return '';
+  return numToInput(n);
+}
+
 function mkMonth(key, regime, faturamento, proLabore, dasPago) {
   return {
     key, regime, faturamento, proLabore,
