@@ -32,6 +32,7 @@ function loadState() {
     // migração leve: garante que toda estrutura nova existe mesmo em dados antigos
     if (!parsed.empresa) parsed.empresa = { nome: '' };
     if (!parsed.params) parsed.params = JSON.parse(JSON.stringify(PARAMS_PADRAO));
+    else parsed.params = Object.assign(JSON.parse(JSON.stringify(PARAMS_PADRAO)), parsed.params);
     (parsed.months || []).forEach(m => {
       if (!Array.isArray(m.despesas)) {
         // dados antigos podiam ter um único campo numérico outrasDespesas

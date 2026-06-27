@@ -127,4 +127,24 @@ test('buildYearCSV gera uma linha por mês do ano pedido', () => {
   assert.ok(linhas[0].startsWith('Mês;Regime;Faturamento'));
 });
 
+test('formatCNPJ aplica a máscara 00.000.000/0000-00 progressivamente', () => {
+  const formatCNPJ = get('formatCNPJ');
+  assert.strictEqual(formatCNPJ('123'), '12.3');
+  assert.strictEqual(formatCNPJ('12345678901234'), '12.345.678/9012-34');
+  assert.strictEqual(formatCNPJ('12.345.678/9012-34'), '12.345.678/9012-34'); // já formatado, idempotente
+  assert.strictEqual(formatCNPJ(''), '');
+});
+
+test('exatamente 28% de Fator R não cai para Anexo V por arredondamento de ponto flutuante', () => {
+  const projectNextMonth = get('projectNextMonth');
+  const idx = months.length - 1;
+  const copy = JSON.parse(JSON.stringify(months));
+  copy[idx].proLabore = 0; // zera pra calcular o mínimo exato a partir do histórico
+  const proj0 = projectNextMonth(copy, idx, params);
+  copy[idx].proLabore = proj0.proLaboreMinimo; // exatamente o mínimo, sem nenhuma sobra
+  const proj = projectNextMonth(copy, idx, params);
+  assert.strictEqual(proj.anexoProjetado, 'III', `28% exato não deveria virar Anexo V (fatorR=${proj.fatorR})`);
+  assert.ok(proj.folga >= -0.005, `folga não deveria aparentar déficit num match exato (folga=${proj.folga})`);
+});
+
 console.log(`\n${passed} teste(s) passaram.`);

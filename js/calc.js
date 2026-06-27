@@ -49,6 +49,7 @@ const PARAMS_PADRAO = {
   aliqInss: 0.11,
   fatorRMeta: 0.28,
   dasMei: 86.05,
+  atividadeMei: '', // '', 'comercio', 'servico' ou 'misto' — só pra lembrar a escolha no seletor
 };
 
 /* Paleta usada nos gráficos e nas categorias de despesa — propositalmente
@@ -109,6 +110,17 @@ function esc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 }
 
+/* Aplica a máscara 00.000.000/0000-00 enquanto a pessoa digita o CNPJ. */
+function formatCNPJ(value) {
+  const d = String(value || '').replace(/\D/g, '').slice(0, 14);
+  let out = d;
+  if (d.length > 2) out = d.slice(0, 2) + '.' + d.slice(2);
+  if (d.length > 5) out = out.slice(0, 6) + '.' + out.slice(6);
+  if (d.length > 8) out = out.slice(0, 10) + '/' + out.slice(10);
+  if (d.length > 12) out = out.slice(0, 15) + '-' + out.slice(15);
+  return out;
+}
+
 function monthLabel(key) {
   if (key === 'sim') return 'Simulação';
   const [y, m] = key.split('-').map(Number);
@@ -164,7 +176,7 @@ function computeMonth(months, idx, params, loansTotal) {
     rbt12 = sf; folha12 = sp;
   }
   const fatorR = rbt12 ? folha12 / rbt12 : 0;
-  const anexo = fatorR >= params.fatorRMeta ? 'III' : 'V';
+  const anexo = fatorR >= params.fatorRMeta - 1e-9 ? 'III' : 'V';
 
   let dasEstimado = 0, aliqEf = 0, aliqNom = 0, pd = 0;
   if (m.regime === 'ME') {
@@ -212,7 +224,7 @@ function projectNextMonth(months, idx, params) {
     if (i !== idx) spOutros += months[i].proLabore;
   }
   const fatorR = sf ? sp / sf : 0;
-  const anexoProjetado = fatorR >= params.fatorRMeta ? 'III' : 'V';
+  const anexoProjetado = fatorR >= params.fatorRMeta - 1e-9 ? 'III' : 'V';
   const proLaboreMinimo = Math.max(0, params.fatorRMeta * sf - spOutros);
   const folga = sp - params.fatorRMeta * sf; // >0 = margem em R$ acima do mínimo
   return { sf, sp, fatorR, anexoProjetado, proLaboreMinimo, folga, windowSize };
@@ -232,7 +244,6 @@ function gaugeSVG(fatorR, meta, anexo) {
     <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" stroke="${color}" stroke-width="15" fill="none"
           stroke-linecap="round" pathLength="100" stroke-dasharray="${pct} 100"/>
     <line x1="${tx1}" y1="${ty1}" x2="${tx2}" y2="${ty2}" stroke="#9F8FD6" stroke-width="2"/>
-    <text x="${cx}" y="${cy + 14}" text-anchor="middle" fill="#6F5FA0" font-size="10" font-family="Inter">meta 28%</text>
   </svg>`;
 }
 

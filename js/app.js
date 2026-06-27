@@ -147,7 +147,7 @@ function renderInicio() {
       titulo = '📋 Sem faturamento lançado ainda';
       msg = `Lance o faturamento e o pró-labore deste mês para ver a projeção do Fator R e quanto retirar para continuar no Anexo III.`;
       showBadges = false;
-    } else if (proj.folga < 0) {
+    } else if (proj.folga < -0.005) {
       variant = 'danger';
       titulo = '⚠️ Risco de cair no Anexo V';
       msg = `Faltam <strong>${fmtBRL(-proj.folga)}</strong> de pró-labore neste mês para manter o Fator R ≥ 28% e seguir no Anexo III no mês que vem. Mínimo necessário este mês: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>.`;
@@ -340,7 +340,7 @@ function renderLancar() {
         <div class="field">
           <label>Pró-labore retirado</label>
           <input type="text" inputmode="decimal" id="f-pl" value="${numToInputBlankZero(m.proLabore)}" placeholder="20,00">
-          <div class="hint ${proj && proj.folga < 0 ? 'hint-danger' : 'hint-ok'}">
+          <div class="hint ${proj && proj.folga < -0.005 ? 'hint-danger' : 'hint-ok'}">
             ${proj ? `Mínimo p/ manter Anexo III no mês que vem: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>` : ''}
           </div>
         </div>
@@ -459,6 +459,7 @@ function renderAjustes() {
     <h2 class="section-title">Dados da empresa</h2>
     <div class="card">
       <div class="field"><label>Nome da empresa</label><input type="text" id="e-nome" value="${esc(STATE.empresa?.nome || '')}" placeholder="Ex: Sua Empresa LTDA"></div>
+      <div class="field"><label>CNPJ</label><input type="text" inputmode="numeric" id="e-cnpj" value="${esc(formatCNPJ(STATE.empresa?.cnpj || ''))}" placeholder="00.000.000/0000-00" maxlength="18"></div>
     </div>
 
     <h2 class="section-title">Parâmetros gerais</h2>
@@ -470,10 +471,10 @@ function renderAjustes() {
       <div class="field">
         <label>Atividade do MEI (preenche o DAS-MEI padrão)</label>
         <select id="p-atividade-mei">
-          <option value="">— selecionar —</option>
-          <option value="comercio">Comércio / Indústria (R$82,05)</option>
-          <option value="servico">Serviço (R$86,05)</option>
-          <option value="misto">Comércio e Serviço (R$87,05)</option>
+          <option value="" ${!p.atividadeMei ? 'selected' : ''}>— selecionar —</option>
+          <option value="comercio" ${p.atividadeMei === 'comercio' ? 'selected' : ''}>Comércio / Indústria (R$82,05)</option>
+          <option value="servico" ${p.atividadeMei === 'servico' ? 'selected' : ''}>Serviço (R$86,05)</option>
+          <option value="misto" ${p.atividadeMei === 'misto' ? 'selected' : ''}>Comércio e Serviço (R$87,05)</option>
         </select>
       </div>
       <div class="field"><label>DAS-MEI fixo</label><input type="text" inputmode="decimal" id="p-dasmei" value="${numToInput(p.dasMei)}" placeholder="20,00"></div>
@@ -533,6 +534,20 @@ function renderAjustes() {
     persist();
   });
 
+  const cnpjEl = document.getElementById('e-cnpj');
+  cnpjEl.addEventListener('input', e => {
+    const pos = e.target.selectionStart;
+    const before = e.target.value.length;
+    e.target.value = formatCNPJ(e.target.value);
+    const diff = e.target.value.length - before;
+    e.target.setSelectionRange(pos + diff, pos + diff);
+  });
+  cnpjEl.addEventListener('change', e => {
+    STATE.empresa = STATE.empresa || {};
+    STATE.empresa.cnpj = formatCNPJ(e.target.value);
+    persist();
+  });
+
   const bindParam = (id, field, isPct) => document.getElementById(id).addEventListener('change', e => {
     const v = parseBRNumber(e.target.value) || 0;
     p[field] = isPct ? v / 100 : v;
@@ -545,8 +560,10 @@ function renderAjustes() {
   bindParam('p-dasmei', 'dasMei', false);
 
   document.getElementById('p-atividade-mei').addEventListener('change', e => {
+    p.atividadeMei = e.target.value;
     const v = DAS_MEI_POR_ATIVIDADE[e.target.value];
-    if (v) { p.dasMei = v; persist(); renderAjustes(); }
+    if (v) p.dasMei = v;
+    persist(); renderAjustes();
   });
 
   document.querySelectorAll('[data-loan]').forEach(el => el.addEventListener('change', () => {
