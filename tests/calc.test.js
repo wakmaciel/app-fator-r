@@ -101,4 +101,30 @@ test('MEI usa o DAS-MEI fixo, não a tabela de Anexo III/V', () => {
   assert.strictEqual(c.dasUsado, params.dasMei);
 });
 
+test('honorários contábeis não entram mais automaticamente no total de saídas', () => {
+  const computeMonth = get('computeMonth');
+  const idx = months.length - 1;
+  const c = computeMonth(months, idx, params, 0);
+  const esperado = months[idx].proLabore + c.dasUsado + c.inss + 0 /* loansTotal */ + c.despesasMes;
+  assert.ok(Math.abs(c.totalSaida - esperado) < 0.001, `totalSaida não bate sem contador fixo: ${c.totalSaida} vs ${esperado}`);
+});
+
+test('parseBRNumber entende vírgula, ponto e formato BR completo', () => {
+  const parseBRNumber = get('parseBRNumber');
+  assert.strictEqual(parseBRNumber('1500,5'), 1500.5);
+  assert.strictEqual(parseBRNumber('1500.5'), 1500.5);
+  assert.strictEqual(parseBRNumber('1.500,50'), 1500.50);
+  assert.strictEqual(parseBRNumber('1500'), 1500);
+  assert.ok(isNaN(parseBRNumber('')));
+});
+
+test('buildYearCSV gera uma linha por mês do ano pedido', () => {
+  const buildYearCSV = get('buildYearCSV');
+  const csv = buildYearCSV({ months, params, loans: [] }, '2026');
+  const linhas = csv.trim().split('\n');
+  // 1 cabeçalho + 5 meses de 2026 no fixture (jan a mai)
+  assert.strictEqual(linhas.length, 1 + 5);
+  assert.ok(linhas[0].startsWith('Mês;Regime;Faturamento'));
+});
+
 console.log(`\n${passed} teste(s) passaram.`);

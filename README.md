@@ -12,17 +12,31 @@ navegador** (localStorage). Nada é enviado para nenhum servidor.
 
 - **Painel com alerta de Fator R**: mostra o Anexo vigente neste mês (o que
   define o seu DAS) e a **projeção para o mês que vem**, com o valor mínimo de
-  pró-labore que falta retirar para não cair no Anexo V.
-- **Lançamento mensal** de faturamento, pró-labore, regime (MEI/ME) e DAS pago.
-- **Despesas por categoria**: lance e acompanhe despesas do mês (aluguel,
-  software, marketing, fornecedores, impostos diversos, taxas bancárias etc.),
-  com totalizador e quebra por categoria.
+  pró-labore que falta retirar para não cair no Anexo V — e, quando há sobra,
+  mostra quanto disso poderia ir como lucro distribuído em vez de pró-labore
+  para pagar menos INSS.
+- **Botão + flutuante**: lança uma despesa ou cria o próximo mês sem precisar
+  navegar até uma aba específica.
+- **Lançamento mensal** de faturamento, pró-labore, regime (MEI/ME), DAS pago
+  e despesas do mês (com categorias e quebra visual), tudo na aba Lançar.
 - **Histórico** de todos os meses lançados, com o Anexo de cada um.
 - **Empréstimos**: parcelas, saldo devedor, mês de início.
-- **Backup manual**: exporte/importe um arquivo `.json` com todos os seus
-  dados (em Ajustes), já que tudo fica salvo localmente no navegador.
+- **Fechamento anual em CSV**: exporta uma planilha com todos os meses de um
+  ano (faturamento, pró-labore, DAS, INSS, despesas, lucro, Fator R) — ótimo
+  para guardar no fim do ano ou mandar para o contador.
+- **Backup manual completo**: exporte/importe um arquivo `.json` com todos os
+  seus dados (em Ajustes), já que tudo fica salvo localmente no navegador.
+- **Campos em decimal "à brasileira"**: aceitam vírgula ou ponto (`1500,50`
+  ou `1500.50`), sem precisar digitar zeros extras.
 - **Gráficos** de faturamento × lucro disponível (Chart.js).
 - **Instalável (PWA)**: pode ser adicionada à tela inicial do iOS/Android.
+
+> Honorários contábeis não são mais um parâmetro fixo — lance-os como despesa
+> (categoria "Contabilidade") sempre que pagar. Assim o valor acompanha
+> automaticamente quando você troca de contador ou o preço muda.
+
+> O app começa com um único mês em branco (o mês atual) — sem dados de
+> exemplo. Lance só o que for de verdade da sua empresa.
 
 ## ⚙️ Como funciona o cálculo
 

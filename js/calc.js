@@ -28,6 +28,7 @@ const MES_ABR = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 
 const MES_EXT = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
 const CATEGORIAS_DESPESA = [
+  { id: 'contabilidade', label: 'Contabilidade' },
   { id: 'estrutura', label: 'Aluguel / Estrutura' },
   { id: 'software', label: 'Software / Ferramentas' },
   { id: 'marketing', label: 'Marketing' },
@@ -38,15 +39,46 @@ const CATEGORIAS_DESPESA = [
 ];
 
 /* Valores de referência 2026 (Receita Federal / INSS):
-   salário mínimo R$1.621,00 • teto INSS R$8.475,55 • DAS-MEI serviços R$86,05 */
+   salário mínimo R$1.621,00 • teto INSS R$8.475,55 • DAS-MEI serviços R$86,05
+   Honorários contábeis NÃO entram mais aqui — lance como despesa do mês
+   (categoria "Contabilidade"), assim o valor acompanha quando você troca de
+   contador ou o preço muda, sem precisar editar um parâmetro fixo. */
 const PARAMS_PADRAO = {
   salarioMinimo: 1621.00,
   tetoInss: 8475.55,
   aliqInss: 0.11,
   fatorRMeta: 0.28,
-  honorarioContador: 149.90,
   dasMei: 86.05,
 };
+
+/* Paleta usada nos gráficos e nas categorias de despesa — propositalmente
+   variada (não só roxo), o roxo fica reservado pra identidade do app
+   (Anexo III, botões principais). */
+const CHART_PALETTE = ['#38BDF8', '#34D399', '#FBBF24', '#FB7185', '#A78BFA', '#F472B6', '#60A5FA', '#FB923C'];
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.substring(0, 2), 16);
+  const g = parseInt(h.substring(2, 4), 16);
+  const b = parseInt(h.substring(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/* Aceita tanto "1500,50" quanto "1500.50" quanto "1.500,50" — pensado pro
+   teclado decimal do celular, que no Brasil costuma usar vírgula. */
+function parseBRNumber(input) {
+  if (input == null) return NaN;
+  let s = String(input).trim();
+  if (s === '') return NaN;
+  const hasComma = s.includes(',');
+  const hasDot = s.includes('.');
+  if (hasComma && hasDot) {
+    s = s.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    s = s.replace(',', '.');
+  }
+  return parseFloat(s);
+}
 
 function mkMonth(key, regime, faturamento, proLabore, dasPago) {
   return {
@@ -132,15 +164,14 @@ function computeMonth(months, idx, params, loansTotal) {
   }
   const dasUsado = m.regime === 'MEI' ? (m.dasPago ?? params.dasMei) : (m.dasPago ?? dasEstimado);
   const inss = m.regime === 'ME' ? Math.min(m.proLabore, params.tetoInss) * params.aliqInss : 0;
-  const contador = params.honorarioContador;
   const despesasMes = despesasTotal(m);
-  const totalSaida = m.proLabore + dasUsado + inss + contador + loansTotal + despesasMes;
+  const totalSaida = m.proLabore + dasUsado + inss + loansTotal + despesasMes;
   const lucroDisponivel = m.faturamento - totalSaida;
   const lucroDistribuido = (m.lucroDistribuidoOverride != null) ? m.lucroDistribuidoOverride : Math.max(lucroDisponivel, 0);
   const saldoCaixa = lucroDisponivel - lucroDistribuido;
 
   return {
-    rbt12, folha12, fatorR, anexo, aliqNom, pd, aliqEf, dasEstimado, dasUsado, inss, contador,
+    rbt12, folha12, fatorR, anexo, aliqNom, pd, aliqEf, dasEstimado, dasUsado, inss,
     despesasMes, totalSaida, lucroDisponivel, lucroDistribuido, saldoCaixa,
   };
 }
@@ -199,3 +230,33 @@ const DAS_MEI_POR_ATIVIDADE = {
   servico: 86.05,
   misto: 87.05,
 };
+
+/* ---------- fechamento anual em CSV ----------
+   Uma linha por mês do ano escolhido, já com Fator R e Anexo calculados.
+   Pensado pra abrir no Excel/Sheets no fim do ano (ou mandar pro contador). */
+function buildYearCSV(state, year) {
+  const idxs = state.months.map((m, i) => i).filter(i => state.months[i].key.startsWith(year + '-'));
+  const header = ['Mês', 'Regime', 'Faturamento', 'Pró-labore', 'DAS', 'INSS', 'Despesas', 'Total saídas', 'Lucro disponível', 'Lucro distribuído', 'Fator R', 'Anexo'];
+  const lines = [header.join(';')];
+  idxs.forEach(i => {
+    const m = state.months[i];
+    const loansTotal = loansTotalAtivo(state.loans, m.key);
+    const c = computeMonth(state.months, i, state.params, loansTotal);
+    const row = [
+      monthLabelExt(m.key),
+      m.regime,
+      c2(m.faturamento), c2(m.proLabore), c2(c.dasUsado), c2(c.inss), c2(c.despesasMes),
+      c2(c.totalSaida), c2(c.lucroDisponivel), c2(c.lucroDistribuido),
+      m.regime === 'ME' ? (c.fatorR * 100).toFixed(2).replace('.', ',') + '%' : '—',
+      m.regime === 'ME' ? c.anexo : 'MEI',
+    ];
+    lines.push(row.join(';'));
+  });
+  return lines.join('\n');
+}
+function c2(n) { return (isFinite(n) ? n : 0).toFixed(2).replace('.', ','); }
+
+function yearsAvailable(state) {
+  const set = new Set(state.months.map(m => m.key.slice(0, 4)));
+  return Array.from(set).sort();
+}

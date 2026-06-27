@@ -5,7 +5,7 @@
 
 let STATE = defaultState();
 let ACTIVE_TAB = 'inicio';
-let ACTIVE_MONTH_KEY = null; // compartilhada entre as abas Lançar e Despesas
+let ACTIVE_MONTH_KEY = null; // mês "em foco" na aba Lançar
 let chartRef = null;
 let backupMsg = '';
 
@@ -21,7 +21,6 @@ function ensureActiveMonth() {
 const TABS = [
   { id: 'inicio', label: 'Início', icon: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9"/>' },
   { id: 'lancar', label: 'Lançar', icon: '<rect x="4" y="4" width="16" height="16" rx="3"/><path d="M12 8v8M8 12h8"/>' },
-  { id: 'despesas', label: 'Despesas', icon: '<path d="M6 2h12v20l-3-2-3 2-3-2-3 2V2z"/><path d="M9 7h6M9 11h6"/>' },
   { id: 'historico', label: 'Histórico', icon: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>' },
   { id: 'ajustes', label: 'Ajustes', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
 ];
@@ -47,6 +46,77 @@ function goTo(tab, monthKey) {
   renderAll();
 }
 
+/* ============================== SHEET (modal de ação) ============================== */
+function openSheet(innerHTML) {
+  const overlay = document.getElementById('sheet-overlay');
+  overlay.innerHTML = `<div class="sheet-backdrop"></div><div class="sheet">${innerHTML}</div>`;
+  overlay.classList.add('open');
+  overlay.querySelector('.sheet-backdrop').addEventListener('click', closeSheet);
+}
+function closeSheet() {
+  const overlay = document.getElementById('sheet-overlay');
+  overlay.classList.remove('open');
+  overlay.innerHTML = '';
+}
+
+function openAddMenu() {
+  openSheet(`
+    <div class="sheet-title">O que você quer fazer?</div>
+    <button class="btn btn-primary sheet-action" id="sheet-nova-despesa">💰 Nova despesa</button>
+    <button class="btn btn-secondary sheet-action" id="sheet-novo-mes">📅 Lançar novo mês</button>
+    <button class="btn btn-ghost sheet-action" id="sheet-cancelar">Cancelar</button>
+  `);
+  document.getElementById('sheet-nova-despesa').addEventListener('click', openNovaDespesaSheet);
+  document.getElementById('sheet-novo-mes').addEventListener('click', criarNovoMes);
+  document.getElementById('sheet-cancelar').addEventListener('click', closeSheet);
+}
+
+function openNovaDespesaSheet(monthKeyPref) {
+  ensureActiveMonth();
+  const defaultKey = monthKeyPref || ACTIVE_MONTH_KEY;
+  const options = STATE.months.slice().reverse().map(mm => `<option value="${mm.key}" ${mm.key === defaultKey ? 'selected' : ''}>${monthLabel(mm.key)}</option>`).join('');
+  const catOptions = CATEGORIAS_DESPESA.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
+  openSheet(`
+    <div class="sheet-title">Nova despesa</div>
+    <div class="field"><label>Mês</label><select id="nd-mes">${options}</select></div>
+    <div class="field"><label>Categoria</label><select id="nd-cat">${catOptions}</select></div>
+    <div class="field"><label>Descrição</label><input type="text" id="nd-desc" placeholder="Ex: assinatura Cypress Cloud"></div>
+    <div class="field"><label>Valor</label><input type="text" inputmode="decimal" id="nd-valor" placeholder="0,00"></div>
+    <button class="btn btn-primary sheet-action" id="nd-confirmar">Adicionar despesa</button>
+    <button class="btn btn-ghost sheet-action" id="sheet-cancelar">Cancelar</button>
+  `);
+  document.getElementById('sheet-cancelar').addEventListener('click', closeSheet);
+  document.getElementById('nd-valor').focus();
+  document.getElementById('nd-confirmar').addEventListener('click', () => {
+    const valor = parseBRNumber(document.getElementById('nd-valor').value);
+    if (!valor || valor <= 0) { document.getElementById('nd-valor').focus(); return; }
+    const mesKey = document.getElementById('nd-mes').value;
+    const categoria = document.getElementById('nd-cat').value;
+    const descricao = document.getElementById('nd-desc').value.trim();
+    const m = STATE.months.find(mm => mm.key === mesKey);
+    if (!Array.isArray(m.despesas)) m.despesas = [];
+    m.despesas.push({ id: 'd' + Date.now(), categoria, descricao, valor });
+    persist();
+    closeSheet();
+    ACTIVE_MONTH_KEY = mesKey;
+    renderAll();
+  });
+}
+
+function criarNovoMes() {
+  const last = STATE.months[STATE.months.length - 1];
+  const nk = nextKey(last.key);
+  if (STATE.months.find(mm => mm.key === nk)) {
+    ACTIVE_MONTH_KEY = nk;
+  } else {
+    STATE.months.push(mkMonth(nk, last.regime, 0, 0));
+    ACTIVE_MONTH_KEY = nk;
+    persist();
+  }
+  closeSheet();
+  goTo('lancar', nk);
+}
+
 /* ============================== TAB: INÍCIO ============================== */
 function renderInicio() {
   ensureActiveMonth();
@@ -61,7 +131,7 @@ function renderInicio() {
   const totFat = sum(m => m.faturamento);
   const totPL = sum(m => m.proLabore);
   const totLucro = sum((m, c) => c.lucroDistribuido);
-  const totImp = sum((m, c) => c.dasUsado + c.inss + c.contador + c.despesasMes);
+  const totImp = sum((m, c) => c.dasUsado + c.inss + c.despesasMes);
 
   const nomeEmpresa = STATE.empresa?.nome ? STATE.empresa.nome + ' • ' : '';
   setTopbar('Fator R', `${nomeEmpresa}Painel • ${monthLabelExt(last.key)}`);
@@ -70,18 +140,20 @@ function renderInicio() {
   let alertHTML = '';
   if (isME) {
     const proj = projectNextMonth(STATE.months, lastIdx, STATE.params);
-    const margemPP = proj.fatorR - STATE.params.fatorRMeta;
-    let variant = 'success', titulo = '✅ Tranquilo por enquanto', msg = '';
+    const economiaInss = Math.max(proj.folga, 0) * STATE.params.aliqInss;
+    let variant, titulo, msg;
     if (proj.folga < 0) {
       variant = 'danger';
       titulo = '⚠️ Risco de cair no Anexo V';
-      msg = `Faltam <strong>${fmtBRL(-proj.folga)}</strong> de pró-labore neste mês para manter o Fator R ≥ 28% e seguir no Anexo III no mês que vem. Mínimo recomendado este mês: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>.`;
-    } else if (margemPP < 0.03) {
-      variant = 'warning';
-      titulo = '🟡 Margem pequena';
-      msg = `Você está dentro da meta, mas com folga de apenas <strong>${fmtBRL(proj.folga)}</strong>. Evite reduzir o pró-labore nos próximos meses para não cair no Anexo V.`;
+      msg = `Faltam <strong>${fmtBRL(-proj.folga)}</strong> de pró-labore neste mês para manter o Fator R ≥ 28% e seguir no Anexo III no mês que vem. Mínimo necessário este mês: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>.`;
+    } else if (proj.folga < 0.01) {
+      variant = 'success';
+      titulo = '✅ No ponto certo';
+      msg = `Você está retirando exatamente o mínimo (<strong>${fmtBRL(proj.proLaboreMinimo)}</strong>) para manter o Anexo III no mês que vem — sem pagar INSS além do necessário.`;
     } else {
-      msg = `Fator R projetado em <strong>${fmtPct(proj.fatorR)}</strong>, com folga de <strong>${fmtBRL(proj.folga)}</strong> acima do mínimo necessário para continuar no Anexo III no mês que vem.`;
+      variant = 'success';
+      titulo = '✅ Dentro da meta — com sobra';
+      msg = `O mínimo necessário este mês é <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>. Você está retirando <strong>${fmtBRL(proj.folga + proj.proLaboreMinimo)}</strong>, ou seja, <strong>${fmtBRL(proj.folga)}</strong> acima do mínimo. Se quiser pagar menos INSS, pode levar essa diferença como lucro distribuído em vez de pró-labore — economia estimada de <strong>${fmtBRL(economiaInss)}</strong> de INSS.`;
     }
     alertHTML = `
     <div class="alert alert-${variant}">
@@ -97,16 +169,16 @@ function renderInicio() {
     alertHTML = `
     <div class="alert alert-info">
       <div class="alert-title">📌 Você está como MEI</div>
-      <div class="alert-body">Enquanto MEI não existe Fator R nem Anexo III/V — só o DAS-MEI fixo. Quando migrar para ME, lembre-se de trocar o regime do mês na aba Lançar: a partir dali o pró-labore passa a contar para o Fator R.</div>
+      <div class="alert-body">Enquanto MEI não existe Fator R nem Anexo III/V — só o DAS-MEI fixo. Quando migrar para ME, troque o regime do mês na aba Lançar: a partir dali o pró-labore passa a contar para o Fator R.</div>
     </div>`;
   }
 
   document.getElementById('content').innerHTML = `
     <h2 class="section-title">Resumo de ${year}</h2>
     <div class="kpi-grid">
-      <div class="kpi"><div class="label">Faturamento</div><div class="value">${fmtBRL(totFat)}</div></div>
+      <div class="kpi"><div class="label">Faturamento</div><div class="value chart-revenue">${fmtBRL(totFat)}</div></div>
       <div class="kpi"><div class="label">Pró-labore</div><div class="value">${fmtBRL(totPL)}</div></div>
-      <div class="kpi"><div class="label">Lucro distribuído</div><div class="value primary">${fmtBRL(totLucro)}</div></div>
+      <div class="kpi"><div class="label">Lucro distribuído</div><div class="value success">${fmtBRL(totLucro)}</div></div>
       <div class="kpi"><div class="label">Impostos + despesas</div><div class="value danger">${fmtBRL(totImp)}</div></div>
     </div>
 
@@ -157,8 +229,8 @@ function renderInicio() {
     data: {
       labels: slice.map(m => monthLabel(m.key)),
       datasets: [
-        { label: 'Faturamento', data: sliceC.map((c, i) => slice[i].faturamento), borderColor: '#9C8CF5', backgroundColor: 'transparent', tension: .3, pointRadius: 3 },
-        { label: 'Lucro disp.', data: sliceC.map(c => c.lucroDisponivel), borderColor: '#A78BFA', backgroundColor: 'transparent', tension: .3, pointRadius: 3 },
+        { label: 'Faturamento', data: sliceC.map((c, i) => slice[i].faturamento), borderColor: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.12)', fill: true, tension: .3, pointRadius: 3 },
+        { label: 'Lucro disp.', data: sliceC.map(c => c.lucroDisponivel), borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.12)', fill: true, tension: .3, pointRadius: 3 },
       ]
     },
     options: {
@@ -172,6 +244,58 @@ function renderInicio() {
   });
 }
 
+/* ============================== DESPESAS (lista inline, usada na aba Lançar) ============================== */
+function renderDespesasInline(m) {
+  const total = despesasTotal(m);
+  const porCategoria = {};
+  (m.despesas || []).forEach(d => { porCategoria[d.categoria] = (porCategoria[d.categoria] || 0) + (Number(d.valor) || 0); });
+  const catEntries = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]);
+  const catRows = catEntries.map(([catId, valor], i) => {
+    const idx = CATEGORIAS_DESPESA.findIndex(c => c.id === catId);
+    const color = CHART_PALETTE[(idx >= 0 ? idx : i) % CHART_PALETTE.length];
+    const label = (CATEGORIAS_DESPESA.find(c => c.id === catId) || { label: catId }).label;
+    const pct = total ? (valor / total) * 100 : 0;
+    return `<div class="cat-row">
+      <div class="cat-row-top"><span>${esc(label)}</span><span>${fmtBRL(valor)}</span></div>
+      <div class="cat-bar"><div class="cat-bar-fill" style="width:${pct.toFixed(1)}%;background:${color};"></div></div>
+    </div>`;
+  }).join('');
+
+  const itemRows = (m.despesas || []).slice().reverse().map(d => {
+    const idx = CATEGORIAS_DESPESA.findIndex(c => c.id === d.categoria);
+    const color = CHART_PALETTE[(idx >= 0 ? idx : 0) % CHART_PALETTE.length];
+    const label = (CATEGORIAS_DESPESA.find(c => c.id === d.categoria) || { label: 'Outros' }).label;
+    return `<div class="expense-row" data-id="${d.id}">
+      <div class="expense-info">
+        <span class="chip" style="background:${hexToRgba(color, 0.18)};color:${color};">${esc(label)}</span>
+        <div class="expense-desc">${esc(d.descricao) || '(sem descrição)'}</div>
+      </div>
+      <div class="expense-right">
+        <div class="v">${fmtBRL(d.valor)}</div>
+        <button class="x-btn" data-del-desp="${d.id}">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="row" style="font-weight:600;"><div class="l">Total de despesas</div><div class="v danger">${fmtBRL(total)}</div></div>
+    ${catRows ? `<div class="divider"></div>${catRows}` : ''}
+    <div class="divider"></div>
+    <div class="expense-list">${itemRows || '<div class="empty" style="padding:16px 0;">Nenhuma despesa lançada neste mês ainda.</div>'}</div>
+    <button class="btn btn-ghost" id="btn-add-despesa-inline">+ Adicionar despesa neste mês</button>
+  `;
+}
+
+function wireDespesasInline(m, rerender) {
+  const btn = document.getElementById('btn-add-despesa-inline');
+  if (btn) btn.addEventListener('click', () => openNovaDespesaSheet(m.key));
+  document.querySelectorAll('[data-del-desp]').forEach(el => el.addEventListener('click', () => {
+    m.despesas = (m.despesas || []).filter(d => d.id !== el.dataset.delDesp);
+    persist();
+    rerender();
+  }));
+}
+
 /* ============================== TAB: LANÇAR ============================== */
 function renderLancar() {
   ensureActiveMonth();
@@ -180,8 +304,6 @@ function renderLancar() {
   const loansTotal = loansTotalAtivo(STATE.loans, m.key);
   const c = computeMonth(STATE.months, idx, STATE.params, loansTotal);
   const proj = m.regime === 'ME' ? projectNextMonth(STATE.months, idx, STATE.params) : null;
-  const isLast = idx === STATE.months.length - 1;
-  const despMes = despesasTotal(m);
 
   setTopbar('Lançar mês', monthLabelExt(m.key));
 
@@ -206,30 +328,26 @@ function renderLancar() {
     <div class="card">
       <div class="field">
         <label>Faturamento do mês</label>
-        <input type="number" inputmode="decimal" id="f-fat" value="${m.faturamento}">
+        <input type="text" inputmode="decimal" id="f-fat" value="${m.faturamento}">
       </div>
       ${m.regime === 'ME' ? `
         <div class="field">
           <label>Pró-labore retirado</label>
-          <input type="number" inputmode="decimal" id="f-pl" value="${m.proLabore}">
+          <input type="text" inputmode="decimal" id="f-pl" value="${m.proLabore}">
           <div class="hint ${proj && proj.folga < 0 ? 'hint-danger' : 'hint-ok'}">
             ${proj ? `Mínimo p/ manter Anexo III no mês que vem: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>` : ''}
           </div>
         </div>
         <div class="field">
           <label>DAS informado pelo contador (em branco = usar estimativa)</label>
-          <input type="number" inputmode="decimal" id="f-das" value="${m.dasPago ?? ''}" placeholder="${fmtBRL(c.dasEstimado)} (estimado)">
+          <input type="text" inputmode="decimal" id="f-das" value="${m.dasPago ?? ''}" placeholder="${fmtBRL(c.dasEstimado)} (estimado)">
         </div>
       ` : `
         <div class="field">
           <label>DAS-MEI pago (em branco = usar o valor padrão)</label>
-          <input type="number" inputmode="decimal" id="f-das" value="${m.dasPago ?? ''}" placeholder="${fmtBRL(STATE.params.dasMei)} (padrão)">
+          <input type="text" inputmode="decimal" id="f-das" value="${m.dasPago ?? ''}" placeholder="${fmtBRL(STATE.params.dasMei)} (padrão)">
         </div>
       `}
-      <div class="row clickable" id="row-despesas">
-        <div class="l">Despesas lançadas este mês (${(m.despesas || []).length} ${(m.despesas || []).length === 1 ? 'item' : 'itens'})</div>
-        <div class="v">${fmtBRL(despMes)} ›</div>
-      </div>
     </div>
 
     <h2 class="section-title">Resultado calculado</h2>
@@ -247,24 +365,24 @@ function renderLancar() {
       ` : `
         <div class="row"><div class="l">DAS-MEI usado</div><div class="v">${fmtBRL(c.dasUsado)}</div></div>
       `}
-      <div class="row"><div class="l">Honorários contábeis</div><div class="v dim">${fmtBRL(c.contador)}</div></div>
       <div class="row"><div class="l">Parcela(s) de empréstimo</div><div class="v dim">${fmtBRL(loansTotal)}</div></div>
-      <div class="row"><div class="l">Despesas</div><div class="v dim">${fmtBRL(despMes)}</div></div>
+      <div class="row"><div class="l">Despesas</div><div class="v dim">${fmtBRL(c.despesasMes)}</div></div>
       <div class="divider"></div>
       <div class="row big"><div class="l">Total de saídas</div><div class="v">${fmtBRL(c.totalSaida)}</div></div>
-      <div class="row big"><div class="l">Lucro disponível</div><div class="v ${c.lucroDisponivel < 0 ? 'danger' : 'primary'}">${fmtBRL(c.lucroDisponivel)}</div></div>
+      <div class="row big"><div class="l">Lucro disponível</div><div class="v ${c.lucroDisponivel < 0 ? 'danger' : 'success'}">${fmtBRL(c.lucroDisponivel)}</div></div>
     </div>
+
+    <h2 class="section-title">Despesas deste mês</h2>
+    <div class="card">${renderDespesasInline(m)}</div>
 
     <h2 class="section-title">Distribuição de lucro</h2>
     <div class="card">
       <div class="field">
         <label>Lucro distribuído este mês (em branco = distribuir tudo)</label>
-        <input type="number" inputmode="decimal" id="f-dist" value="${m.lucroDistribuidoOverride ?? ''}" placeholder="${fmtBRL(Math.max(c.lucroDisponivel, 0))} (automático)">
+        <input type="text" inputmode="decimal" id="f-dist" value="${m.lucroDistribuidoOverride ?? ''}" placeholder="${fmtBRL(Math.max(c.lucroDisponivel, 0))} (automático)">
       </div>
       <div class="row"><div class="l">Saldo retido em caixa</div><div class="v">${fmtBRL(c.saldoCaixa)}</div></div>
     </div>
-
-    ${isLast ? `<button class="btn btn-secondary" id="btn-next-month">+ Adicionar ${monthLabel(nextKey(m.key))}</button>` : ''}
   `;
 
   document.getElementById('sel-month').addEventListener('change', e => { ACTIVE_MONTH_KEY = e.target.value; renderLancar(); });
@@ -274,16 +392,15 @@ function renderLancar() {
     persist(); renderLancar();
   }));
 
-  const rowDesp = document.getElementById('row-despesas');
-  if (rowDesp) rowDesp.addEventListener('click', () => goTo('despesas', m.key));
+  wireDespesasInline(m, renderLancar);
 
   const bindNum = (id, field, allowNull) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('change', () => {
       const raw = el.value;
-      if (allowNull && raw === '') { m[field] = null; }
-      else { m[field] = raw === '' ? 0 : parseFloat(raw); }
+      if (allowNull && raw.trim() === '') { m[field] = null; }
+      else { const v = parseBRNumber(raw); m[field] = isNaN(v) ? 0 : v; }
       persist();
       renderLancar();
     });
@@ -292,112 +409,11 @@ function renderLancar() {
   bindNum('f-pl', 'proLabore', false);
   bindNum('f-das', 'dasPago', true);
   bindNum('f-dist', 'lucroDistribuidoOverride', true);
-
-  const nextBtn = document.getElementById('btn-next-month');
-  if (nextBtn) nextBtn.addEventListener('click', () => {
-    const nk = nextKey(m.key);
-    const newMonth = mkMonth(nk, m.regime, 0, 0);
-    STATE.months.push(newMonth);
-    ACTIVE_MONTH_KEY = nk;
-    persist();
-    renderLancar();
-  });
-}
-
-/* ============================== TAB: DESPESAS ============================== */
-function renderDespesas() {
-  ensureActiveMonth();
-  const idx = STATE.months.findIndex(m => m.key === ACTIVE_MONTH_KEY);
-  const m = STATE.months[idx];
-  const total = despesasTotal(m);
-
-  setTopbar('Despesas', monthLabelExt(m.key));
-
-  const options = STATE.months.map(mm => `<option value="${mm.key}" ${mm.key === m.key ? 'selected' : ''}>${monthLabel(mm.key)}</option>`).join('');
-
-  const porCategoria = {};
-  (m.despesas || []).forEach(d => { porCategoria[d.categoria] = (porCategoria[d.categoria] || 0) + (Number(d.valor) || 0); });
-  const catRows = Object.entries(porCategoria).sort((a, b) => b[1] - a[1]).map(([catId, valor]) => {
-    const label = (CATEGORIAS_DESPESA.find(c => c.id === catId) || { label: catId }).label;
-    const pct = total ? (valor / total) * 100 : 0;
-    return `<div class="cat-row">
-      <div class="cat-row-top"><span>${esc(label)}</span><span>${fmtBRL(valor)}</span></div>
-      <div class="cat-bar"><div class="cat-bar-fill" style="width:${pct.toFixed(1)}%"></div></div>
-    </div>`;
-  }).join('');
-
-  const itemRows = (m.despesas || []).slice().reverse().map(d => {
-    const label = (CATEGORIAS_DESPESA.find(c => c.id === d.categoria) || { label: 'Outros' }).label;
-    return `<div class="expense-row" data-id="${d.id}">
-      <div class="expense-info">
-        <span class="chip">${esc(label)}</span>
-        <div class="expense-desc">${esc(d.descricao) || '(sem descrição)'}</div>
-      </div>
-      <div class="expense-right">
-        <div class="v">${fmtBRL(d.valor)}</div>
-        <button class="x-btn" data-del="${d.id}">✕</button>
-      </div>
-    </div>`;
-  }).join('');
-
-  const catOptions = CATEGORIAS_DESPESA.map(c => `<option value="${c.id}">${c.label}</option>`).join('');
-
-  document.getElementById('content').innerHTML = `
-    <h2 class="section-title">Selecionar mês</h2>
-    <div class="card tight">
-      <select id="sel-month-desp">${options}</select>
-    </div>
-
-    <div class="kpi-grid" style="grid-template-columns:1fr;">
-      <div class="kpi"><div class="label">Total de despesas em ${monthLabel(m.key)}</div><div class="value danger">${fmtBRL(total)}</div></div>
-    </div>
-
-    ${catRows ? `<h2 class="section-title">Por categoria</h2><div class="card">${catRows}</div>` : ''}
-
-    <h2 class="section-title">Nova despesa</h2>
-    <div class="card">
-      <div class="field">
-        <label>Categoria</label>
-        <select id="d-cat">${catOptions}</select>
-      </div>
-      <div class="field">
-        <label>Descrição</label>
-        <input type="text" id="d-desc" placeholder="Ex: assinatura Cypress Cloud">
-      </div>
-      <div class="field">
-        <label>Valor</label>
-        <input type="number" inputmode="decimal" id="d-valor" placeholder="0,00">
-      </div>
-      <button class="btn btn-primary" id="btn-add-despesa">+ Adicionar despesa</button>
-    </div>
-
-    <h2 class="section-title">Lançamentos do mês</h2>
-    <div class="card tight">${itemRows || '<div class="empty">Nenhuma despesa lançada neste mês.</div>'}</div>
-  `;
-
-  document.getElementById('sel-month-desp').addEventListener('change', e => { ACTIVE_MONTH_KEY = e.target.value; renderDespesas(); });
-
-  document.getElementById('btn-add-despesa').addEventListener('click', () => {
-    const valor = parseFloat(document.getElementById('d-valor').value);
-    if (!valor || valor <= 0) { document.getElementById('d-valor').focus(); return; }
-    const categoria = document.getElementById('d-cat').value;
-    const descricao = document.getElementById('d-desc').value.trim();
-    if (!Array.isArray(m.despesas)) m.despesas = [];
-    m.despesas.push({ id: 'd' + Date.now(), categoria, descricao, valor });
-    persist();
-    renderDespesas();
-  });
-
-  document.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', () => {
-    m.despesas = (m.despesas || []).filter(d => d.id !== el.dataset.del);
-    persist();
-    renderDespesas();
-  }));
 }
 
 /* ============================== TAB: HISTÓRICO ============================== */
 function renderHistorico() {
-  setTopbar('Histórico', `${STATE.months.length} meses desde a abertura`);
+  setTopbar('Histórico', `${STATE.months.length} ${STATE.months.length === 1 ? 'mês' : 'meses'} registrados`);
   const all = computeAll(STATE);
   const rows = STATE.months.map((m, i) => {
     const c = all[i];
@@ -418,7 +434,7 @@ function renderHistorico() {
 
   document.getElementById('content').innerHTML = `
     <h2 class="section-title">Todos os meses</h2>
-    <div class="card tight">${rows || '<div class="empty">Nenhum mês cadastrado ainda.</div>'}</div>
+    <div class="card tight">${rows || '<div class="empty">Nenhum mês cadastrado ainda. Toque no + para lançar o primeiro.</div>'}</div>
     <div class="note">Toque em um mês para abrir e editar na aba Lançar.</div>
   `;
   document.querySelectorAll('.month-list-item').forEach(el => el.addEventListener('click', () => {
@@ -430,6 +446,9 @@ function renderHistorico() {
 function renderAjustes() {
   setTopbar('Ajustes', 'Empresa, parâmetros e backup');
   const p = STATE.params;
+  const years = yearsAvailable(STATE);
+  const yearOptions = years.map(y => `<option value="${y}">${y}</option>`).join('');
+
   document.getElementById('content').innerHTML = `
     <h2 class="section-title">Dados da empresa</h2>
     <div class="card">
@@ -438,11 +457,10 @@ function renderAjustes() {
 
     <h2 class="section-title">Parâmetros gerais</h2>
     <div class="card">
-      <div class="field"><label>Salário mínimo nacional</label><input type="number" id="p-sal" value="${p.salarioMinimo}"></div>
-      <div class="field"><label>Teto do INSS</label><input type="number" id="p-teto" value="${p.tetoInss}"></div>
-      <div class="field"><label>Alíquota INSS sobre pró-labore (%)</label><input type="number" id="p-aliqinss" value="${(p.aliqInss * 100).toFixed(2)}"></div>
-      <div class="field"><label>Meta do Fator R (%)</label><input type="number" id="p-meta" value="${(p.fatorRMeta * 100).toFixed(2)}"></div>
-      <div class="field"><label>Honorários contábeis (mensal)</label><input type="number" id="p-contador" value="${p.honorarioContador}"></div>
+      <div class="field"><label>Salário mínimo nacional</label><input type="text" inputmode="decimal" id="p-sal" value="${p.salarioMinimo}"></div>
+      <div class="field"><label>Teto do INSS</label><input type="text" inputmode="decimal" id="p-teto" value="${p.tetoInss}"></div>
+      <div class="field"><label>Alíquota INSS sobre pró-labore (%)</label><input type="text" inputmode="decimal" id="p-aliqinss" value="${(p.aliqInss * 100).toFixed(2)}"></div>
+      <div class="field"><label>Meta do Fator R (%)</label><input type="text" inputmode="decimal" id="p-meta" value="${(p.fatorRMeta * 100).toFixed(2)}"></div>
       <div class="field">
         <label>Atividade do MEI (preenche o DAS-MEI padrão)</label>
         <select id="p-atividade-mei">
@@ -452,7 +470,8 @@ function renderAjustes() {
           <option value="misto">Comércio e Serviço (R$87,05)</option>
         </select>
       </div>
-      <div class="field"><label>DAS-MEI fixo</label><input type="number" id="p-dasmei" value="${p.dasMei}"></div>
+      <div class="field"><label>DAS-MEI fixo</label><input type="text" inputmode="decimal" id="p-dasmei" value="${p.dasMei}"></div>
+      <div class="note" style="margin-top:0;">Honorários contábeis não são mais um valor fixo aqui — lance-os como despesa (categoria "Contabilidade") sempre que pagar, assim o valor acompanha quando o preço do seu contador mudar.</div>
     </div>
 
     <h2 class="section-title">Empréstimos</h2>
@@ -464,11 +483,11 @@ function renderAjustes() {
           <div class="top"><span class="name">${esc(l.nome) || 'Empréstimo'}</span><button class="x-btn" data-del="${l.id}">✕</button></div>
           <div class="field"><label>Nome</label><input type="text" data-loan="${l.id}" data-field="nome" value="${esc(l.nome)}"></div>
           <div class="two-col">
-            <div class="field"><label>Nº parcelas</label><input type="number" data-loan="${l.id}" data-field="nParcelas" value="${l.nParcelas || 0}"></div>
-            <div class="field"><label>Valor da parcela</label><input type="number" data-loan="${l.id}" data-field="valorParcela" value="${l.valorParcela || 0}"></div>
+            <div class="field"><label>Nº parcelas</label><input type="number" step="1" data-loan="${l.id}" data-field="nParcelas" value="${l.nParcelas || 0}"></div>
+            <div class="field"><label>Valor da parcela</label><input type="text" inputmode="decimal" data-loan="${l.id}" data-field="valorParcela" value="${l.valorParcela || 0}"></div>
           </div>
           <div class="two-col">
-            <div class="field"><label>Parcelas pagas</label><input type="number" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>
+            <div class="field"><label>Parcelas pagas</label><input type="number" step="1" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>
             <div class="field"><label>Mês de início</label><input type="month" data-loan="${l.id}" data-field="mesInicio" value="${l.mesInicio || ''}"></div>
           </div>
           <div class="row"><div class="l">Saldo devedor estimado</div><div class="v dim">${fmtBRL(saldo)} (${restantes} restantes)</div></div>
@@ -477,19 +496,28 @@ function renderAjustes() {
     </div>
     <button class="btn btn-ghost" id="btn-add-loan">+ Adicionar empréstimo</button>
 
+    <h2 class="section-title">Fechamento anual</h2>
+    <div class="card">
+      <div class="note" style="margin-top:0;">Exporte uma planilha (.csv) com todos os meses de um ano — faturamento, pró-labore, DAS, INSS, despesas, lucro e Fator R já calculados. Boa pra guardar no fim do ano ou mandar pro contador.</div>
+      ${years.length ? `
+        <div class="field"><label>Ano</label><select id="sel-ano-export">${yearOptions}</select></div>
+        <button class="btn btn-secondary" id="btn-export-csv">Exportar ano (.csv)</button>
+      ` : `<div class="note">Lance pelo menos um mês para poder exportar.</div>`}
+    </div>
+
     <h2 class="section-title">Backup de dados</h2>
     <div class="card">
       <div class="note" style="margin-top:0;">Seus dados ficam salvos só neste navegador. Exporte um backup de vez em quando para não perder nada se limpar o cache ou trocar de aparelho.</div>
-      <button class="btn btn-secondary" id="btn-export">Exportar backup (.json)</button>
+      <button class="btn btn-secondary" id="btn-export">Exportar backup completo (.json)</button>
       <label class="btn btn-ghost" for="file-import" style="display:block;text-align:center;margin-top:8px;">Importar backup</label>
       <input type="file" id="file-import" accept="application/json" style="display:none;">
       ${backupMsg ? `<div class="note" style="color:var(--primary);">${esc(backupMsg)}</div>` : ''}
     </div>
 
-    <h2 class="section-title">Dados de exemplo</h2>
+    <h2 class="section-title">Zona de risco</h2>
     <div class="card">
-      <button class="btn btn-danger" id="btn-reset">Restaurar dados de exemplo</button>
-      <div class="note">Isso substitui faturamento, pró-labore, despesas e empréstimos pelos dados de exemplo. Não pode ser desfeito — exporte um backup antes, se quiser guardar o que já lançou.</div>
+      <button class="btn btn-danger" id="btn-clear">Apagar todos os dados</button>
+      <div class="note">Remove todos os meses, despesas e empréstimos lançados e recomeça do zero. Não pode ser desfeito — exporte um backup antes, se quiser guardar algo.</div>
     </div>
   `;
 
@@ -500,7 +528,7 @@ function renderAjustes() {
   });
 
   const bindParam = (id, field, isPct) => document.getElementById(id).addEventListener('change', e => {
-    const v = parseFloat(e.target.value) || 0;
+    const v = parseBRNumber(e.target.value) || 0;
     p[field] = isPct ? v / 100 : v;
     persist();
   });
@@ -508,7 +536,6 @@ function renderAjustes() {
   bindParam('p-teto', 'tetoInss', false);
   bindParam('p-aliqinss', 'aliqInss', true);
   bindParam('p-meta', 'fatorRMeta', true);
-  bindParam('p-contador', 'honorarioContador', false);
   bindParam('p-dasmei', 'dasMei', false);
 
   document.getElementById('p-atividade-mei').addEventListener('change', e => {
@@ -519,7 +546,9 @@ function renderAjustes() {
   document.querySelectorAll('[data-loan]').forEach(el => el.addEventListener('change', () => {
     const loan = STATE.loans.find(l => l.id === el.dataset.loan);
     const f = el.dataset.field;
-    loan[f] = (f === 'nome' || f === 'mesInicio') ? el.value : (parseFloat(el.value) || 0);
+    if (f === 'nome' || f === 'mesInicio') loan[f] = el.value;
+    else if (f === 'nParcelas' || f === 'parcelasPagas') loan[f] = parseInt(el.value, 10) || 0;
+    else loan[f] = parseBRNumber(el.value) || 0;
     persist();
   }));
   document.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', () => {
@@ -529,6 +558,12 @@ function renderAjustes() {
   document.getElementById('btn-add-loan').addEventListener('click', () => {
     STATE.loans.push({ id: 'l' + Date.now(), nome: 'Novo empréstimo', valorContratado: 0, nParcelas: 1, valorParcela: 0, parcelasPagas: 0, mesInicio: '' });
     persist(); renderAjustes();
+  });
+
+  const btnCsv = document.getElementById('btn-export-csv');
+  if (btnCsv) btnCsv.addEventListener('click', () => {
+    const year = document.getElementById('sel-ano-export').value;
+    exportYearCSV(STATE, year);
   });
 
   document.getElementById('btn-export').addEventListener('click', () => exportBackup(STATE));
@@ -548,12 +583,9 @@ function renderAjustes() {
     });
   });
 
-  document.getElementById('btn-reset').addEventListener('click', () => {
-    if (!confirm('Restaurar todos os dados de exemplo? Isso substitui o que você já lançou.')) return;
-    const seed = defaultState();
-    STATE.months = seed.months;
-    STATE.params = seed.params;
-    STATE.loans = seed.loans;
+  document.getElementById('btn-clear').addEventListener('click', () => {
+    if (!confirm('Apagar TODOS os dados lançados e recomeçar do zero? Isso não pode ser desfeito.')) return;
+    STATE = defaultState();
     ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1].key;
     persist(); ACTIVE_TAB = 'inicio'; renderAll();
   });
@@ -564,7 +596,6 @@ function renderAll() {
   renderTabbar();
   if (ACTIVE_TAB === 'inicio') renderInicio();
   else if (ACTIVE_TAB === 'lancar') renderLancar();
-  else if (ACTIVE_TAB === 'despesas') renderDespesas();
   else if (ACTIVE_TAB === 'historico') renderHistorico();
   else if (ACTIVE_TAB === 'ajustes') renderAjustes();
 }
@@ -573,4 +604,5 @@ function renderAll() {
   STATE = loadState();
   ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
   renderAll();
+  document.getElementById('fab-add').addEventListener('click', openAddMenu);
 })();

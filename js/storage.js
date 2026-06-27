@@ -7,29 +7,20 @@
 
 const STORAGE_KEY = 'fatorr:state:v2';
 
+function currentMonthKey() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
 function defaultState() {
   return {
     _v: 2,
     empresa: { nome: '' },
     params: JSON.parse(JSON.stringify(PARAMS_PADRAO)),
     months: [
-      mkMonth('2025-05', 'MEI', 580.65, 0),
-      mkMonth('2025-06', 'MEI', 6000, 0),
-      mkMonth('2025-07', 'MEI', 6000, 0),
-      mkMonth('2025-08', 'MEI', 6000, 0),
-      mkMonth('2025-09', 'MEI', 9000, 0),
-      mkMonth('2025-10', 'MEI', 9937.49, 0),
-      mkMonth('2025-11', 'MEI', 10089.27, 0),
-      mkMonth('2025-12', 'MEI', 9571.43, 0),
-      mkMonth('2026-01', 'ME', 9000, 0),
-      mkMonth('2026-02', 'ME', 0, 9266),
-      mkMonth('2026-03', 'ME', 0, 9266),
-      mkMonth('2026-04', 'ME', 9100.01, 2756.96),
-      mkMonth('2026-05', 'ME', 9000, 2520, 540.00),
+      mkMonth(currentMonthKey(), 'ME', 0, 0),
     ],
-    loans: [
-      { id: 'l1', nome: 'Capital de Giro - Banco X', valorContratado: 20000, nParcelas: 24, valorParcela: 670, parcelasPagas: 3, mesInicio: '' }
-    ],
+    loans: [],
   };
 }
 
@@ -74,6 +65,19 @@ function exportBackup(state) {
   const today = new Date().toISOString().slice(0, 10);
   a.href = url;
   a.download = `fator-r-backup-${today}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function exportYearCSV(state, year) {
+  const csv = '\uFEFF' + buildYearCSV(state, year); // BOM ajuda o Excel a ler acentos certinho
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `fator-r-fechamento-${year}.csv`;
   document.body.appendChild(a);
   a.click();
   a.remove();
