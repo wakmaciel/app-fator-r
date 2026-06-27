@@ -28,6 +28,13 @@
   --blur: blur(28px) saturate(165%);
   --blur-soft: blur(16px) saturate(150%);
 
+  /* ---------- doca (barra de abas) — bem mais escura que os cards,
+     pra flutuar como uma camada própria em vez de se misturar com o fundo ---------- */
+  --dock-bg: rgba(8, 5, 20, 0.80);
+  --dock-border: rgba(255, 255, 255, 0.16);
+  --dock-shadow: 0 14px 36px rgba(0, 0, 0, 0.55), 0 1px 0 rgba(255, 255, 255, 0.08) inset;
+  --dock-active-bg: rgba(167, 139, 250, 0.22);
+
   --radius: 22px;
   --font-display: 'Space Grotesk', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
@@ -111,14 +118,14 @@ button, a, input, select, textarea { touch-action: manipulation; }
   width: calc(100% - 28px);
   max-width: 452px;
   display: flex;
-  background: var(--glass-strong);
+  background: var(--dock-bg);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--dock-border);
   border-radius: 26px;
   padding: 7px 4px;
   z-index: 30;
-  box-shadow: var(--glass-shadow), 0 1px 0 var(--glass-highlight) inset;
+  box-shadow: var(--dock-shadow);
 }
 
 .tab-btn {
@@ -131,15 +138,15 @@ button, a, input, select, textarea { touch-action: manipulation; }
   background: none;
   border: none;
   border-radius: 18px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-family: var(--font-body);
   font-size: 10.5px;
   font-weight: 600;
   transition: background .15s ease, color .15s ease;
 }
 
-.tab-btn svg { width: 22px; height: 22px; stroke: var(--text-faint); fill: none; stroke-width: 1.8; }
-.tab-btn.active { color: var(--text); background: var(--glass-light); }
+.tab-btn svg { width: 22px; height: 22px; stroke: var(--text-dim); fill: none; stroke-width: 1.8; }
+.tab-btn.active { color: var(--text); background: var(--dock-active-bg); }
 .tab-btn.active svg { stroke: var(--primary); filter: drop-shadow(0 0 6px rgba(167, 139, 250, 0.6)); }
 
 h2.section-title {
