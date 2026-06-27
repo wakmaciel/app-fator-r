@@ -240,10 +240,10 @@ function gaugeSVG(fatorR, meta, anexo) {
   const pct = Math.max(0, Math.min(100, (fatorR / scaleMax) * 100));
   const color = anexo === 'III' ? 'var(--primary)' : 'var(--danger)';
   return `<svg viewBox="0 0 240 132" width="240" height="132">
-    <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" stroke="#2C2058" stroke-width="15" fill="none" stroke-linecap="round"/>
+    <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" stroke="var(--gauge-track)" stroke-width="15" fill="none" stroke-linecap="round"/>
     <path d="M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}" stroke="${color}" stroke-width="15" fill="none"
           stroke-linecap="round" pathLength="100" stroke-dasharray="${pct} 100"/>
-    <line x1="${tx1}" y1="${ty1}" x2="${tx2}" y2="${ty2}" stroke="#9F8FD6" stroke-width="2"/>
+    <line x1="${tx1}" y1="${ty1}" x2="${tx2}" y2="${ty2}" stroke="var(--gauge-tick)" stroke-width="2"/>
   </svg>`;
 }
 

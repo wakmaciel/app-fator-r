@@ -11,6 +11,10 @@ let backupMsg = '';
 
 function persist() { saveState(STATE); }
 
+function isLightMode() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
+}
+
 function ensureActiveMonth() {
   if (!STATE.months.find(m => m.key === ACTIVE_MONTH_KEY)) {
     ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1].key;
@@ -230,21 +234,29 @@ function renderInicio() {
     return;
   }
   if (chartRef) chartRef.destroy();
+  const light = isLightMode();
+  const revenueColor = light ? '#0369A1' : '#38BDF8';
+  const revenueFill = light ? 'rgba(3,105,161,0.10)' : 'rgba(56,189,248,0.12)';
+  const profitColor = light ? '#15803D' : '#34D399';
+  const profitFill = light ? 'rgba(21,128,61,0.10)' : 'rgba(52,211,153,0.12)';
+  const tickColor = light ? '#5B5478' : '#6F5FA0';
+  const legendColor = light ? '#5B5478' : '#B0A0DE';
+  const gridColor = light ? 'rgba(40,20,80,0.10)' : '#241A4D';
   chartRef = new Chart(ctx, {
     type: 'line',
     data: {
       labels: slice.map(m => monthLabel(m.key)),
       datasets: [
-        { label: 'Faturamento', data: sliceC.map((c, i) => slice[i].faturamento), borderColor: '#38BDF8', backgroundColor: 'rgba(56,189,248,0.12)', fill: true, tension: .3, pointRadius: 3 },
-        { label: 'Lucro disp.', data: sliceC.map(c => c.lucroDisponivel), borderColor: '#34D399', backgroundColor: 'rgba(52,211,153,0.12)', fill: true, tension: .3, pointRadius: 3 },
+        { label: 'Faturamento', data: sliceC.map((c, i) => slice[i].faturamento), borderColor: revenueColor, backgroundColor: revenueFill, fill: true, tension: .3, pointRadius: 3 },
+        { label: 'Lucro disp.', data: sliceC.map(c => c.lucroDisponivel), borderColor: profitColor, backgroundColor: profitFill, fill: true, tension: .3, pointRadius: 3 },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: '#B0A0DE', font: { size: 11 } } } },
+      plugins: { legend: { labels: { color: legendColor, font: { size: 11 } } } },
       scales: {
-        x: { ticks: { color: '#6F5FA0', font: { size: 10 } }, grid: { color: '#241A4D' } },
-        y: { ticks: { color: '#6F5FA0', font: { size: 10 } }, grid: { color: '#241A4D' } }
+        x: { ticks: { color: tickColor, font: { size: 10 } }, grid: { color: gridColor } },
+        y: { ticks: { color: tickColor, font: { size: 10 } }, grid: { color: gridColor } }
       }
     }
   });
@@ -628,4 +640,7 @@ function renderAll() {
   ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
   renderAll();
   document.getElementById('fab-add').addEventListener('click', openAddMenu);
+  if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => renderAll());
+  }
 })();

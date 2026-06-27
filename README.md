@@ -30,6 +30,7 @@ navegador** (localStorage). Nada é enviado para nenhum servidor.
   ou `1500.50`), sem precisar digitar zeros extras.
 - **Gráficos** de faturamento × lucro disponível (Chart.js).
 - **Instalável (PWA)**: pode ser adicionada à tela inicial do iOS/Android.
+- **Modo claro/escuro automático**: segue a aparência do sistema (iOS/Android) — não tem botão de alternância, é automático via `prefers-color-scheme`.
 
 > Honorários contábeis não são mais um parâmetro fixo — lance-os como despesa
 > (categoria "Contabilidade") sempre que pagar. Assim o valor acompanha
