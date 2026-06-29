@@ -5,7 +5,8 @@
 
 let STATE = defaultState();
 let ACTIVE_TAB = 'inicio';
-let ACTIVE_MONTH_KEY = null; // mês "em foco" na aba Lançar
+let ACTIVE_MONTH_KEY = null; // mês "em foco" na aba Mês
+let INICIO_MONTH_KEY = null; // mês escolhido pra ver o resumo na aba Início
 let chartRef = null;
 let backupMsg = '';
 
@@ -18,6 +19,12 @@ function isLightMode() {
 function ensureActiveMonth() {
   if (!STATE.months.find(m => m.key === ACTIVE_MONTH_KEY)) {
     ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1].key;
+  }
+}
+
+function ensureInicioMonth() {
+  if (!STATE.months.find(m => m.key === INICIO_MONTH_KEY)) {
+    INICIO_MONTH_KEY = STATE.months[STATE.months.length - 1].key;
   }
 }
 
@@ -123,13 +130,13 @@ function criarNovoMes() {
 
 /* ============================== TAB: INÍCIO ============================== */
 function renderInicio() {
-  ensureActiveMonth();
+  ensureInicioMonth();
   const all = computeAll(STATE);
-  const lastIdx = STATE.months.length - 1;
-  const last = STATE.months[lastIdx];
-  const lastC = all[lastIdx];
+  const selIdx = STATE.months.findIndex(m => m.key === INICIO_MONTH_KEY);
+  const sel = STATE.months[selIdx];
+  const selC = all[selIdx];
 
-  const year = last.key.slice(0, 4);
+  const year = sel.key.slice(0, 4);
   const yearIdxs = STATE.months.map((m, i) => i).filter(i => STATE.months[i].key.slice(0, 4) === year);
   const sum = f => yearIdxs.reduce((s, i) => s + f(STATE.months[i], all[i]), 0);
   const totFat = sum(m => m.faturamento);
@@ -138,12 +145,12 @@ function renderInicio() {
   const totImp = sum((m, c) => c.dasUsado + c.inss + c.despesasMes);
 
   const nomeEmpresa = STATE.empresa?.nome ? STATE.empresa.nome + ' • ' : '';
-  setTopbar('Fator R', `${nomeEmpresa}Painel • ${monthLabelExt(last.key)}`);
+  setTopbar('Fator R', `${nomeEmpresa}Painel • ${monthLabelExt(sel.key)}`);
 
-  const isME = last.regime === 'ME';
+  const isME = sel.regime === 'ME';
   let alertHTML = '';
   if (isME) {
-    const proj = projectNextMonth(STATE.months, lastIdx, STATE.params);
+    const proj = projectNextMonth(STATE.months, selIdx, STATE.params);
     const economiaInss = Math.max(proj.folga, 0) * STATE.params.aliqInss;
     let variant, titulo, msg, showBadges = true;
     if (proj.sf <= 0) {
@@ -170,7 +177,7 @@ function renderInicio() {
       <div class="alert-body">${msg}</div>
       ${showBadges ? `
       <div class="alert-rows">
-        <div class="row"><div class="l">Anexo vigente neste mês (usado no DAS)</div><div class="v"><span class="badge ${lastC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${lastC.anexo}</span></div></div>
+        <div class="row"><div class="l">Anexo vigente neste mês (usado no DAS)</div><div class="v"><span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span></div></div>
         <div class="row"><div class="l">Projeção para o mês que vem</div><div class="v"><span class="badge ${proj.anexoProjetado === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${proj.anexoProjetado}</span></div></div>
       </div>` : ''}
       <button class="btn btn-secondary" id="btn-ir-lancar">Ajustar pró-labore deste mês →</button>
@@ -183,8 +190,13 @@ function renderInicio() {
     </div>`;
   }
 
+  const monthOptions = STATE.months.slice().reverse().map(mm => `<option value="${mm.key}" ${mm.key === sel.key ? 'selected' : ''}>${monthLabel(mm.key)} ${mm.regime === 'MEI' ? '(MEI)' : ''}</option>`).join('');
+
   document.getElementById('content').innerHTML = `
     <h2 class="section-title">Resumo de ${year}</h2>
+    <div class="card tight">
+      <select id="sel-month-inicio">${monthOptions}</select>
+    </div>
     <div class="kpi-grid">
       <div class="kpi"><div class="label">Faturamento</div><div class="value chart-revenue">${fmtBRL(totFat)}</div></div>
       <div class="kpi"><div class="label">Pró-labore</div><div class="value">${fmtBRL(totPL)}</div></div>
@@ -194,14 +206,14 @@ function renderInicio() {
 
     ${alertHTML}
 
-    <h2 class="section-title">Fator R — ${monthLabel(last.key)}</h2>
+    <h2 class="section-title">Fator R — ${monthLabel(sel.key)}</h2>
     <div class="card" style="text-align:center;">
       ${isME ? `
         <div id="gauge-wrap">
-          ${gaugeSVG(lastC.fatorR, STATE.params.fatorRMeta, lastC.anexo)}
-          <div class="gauge-pct">${fmtPct(lastC.fatorR)}</div>
+          ${gaugeSVG(selC.fatorR, STATE.params.fatorRMeta, selC.anexo)}
+          <div class="gauge-pct">${fmtPct(selC.fatorR)}</div>
           <div class="gauge-sub">
-            <span class="badge ${lastC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${lastC.anexo}</span>
+            <span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span>
           </div>
         </div>
       ` : `
@@ -219,12 +231,17 @@ function renderInicio() {
     <div class="note">Cálculos de Fator R, RBT12 e DAS seguem a metodologia oficial do PGDAS-D. Confirme sempre os valores de imposto com seu contador.</div>
   `;
 
-  const btnLancar = document.getElementById('btn-ir-lancar');
-  if (btnLancar) btnLancar.addEventListener('click', () => goTo('lancar', last.key));
+  document.getElementById('sel-month-inicio').addEventListener('change', e => {
+    INICIO_MONTH_KEY = e.target.value;
+    renderInicio();
+  });
 
-  const N = Math.min(8, STATE.months.length);
-  const slice = STATE.months.slice(-N);
-  const sliceC = all.slice(-N);
+  const btnLancar = document.getElementById('btn-ir-lancar');
+  if (btnLancar) btnLancar.addEventListener('click', () => goTo('lancar', sel.key));
+
+  const N = Math.min(8, selIdx + 1);
+  const slice = STATE.months.slice(0, selIdx + 1).slice(-N);
+  const sliceC = all.slice(0, selIdx + 1).slice(-N);
   const ctx = document.getElementById('chart-inicio');
   if (typeof Chart === 'undefined') {
     if (ctx) ctx.replaceWith(Object.assign(document.createElement('div'), {
@@ -401,6 +418,12 @@ function renderLancar() {
       </div>
       <div class="row"><div class="l">Saldo retido em caixa</div><div class="v">${fmtBRL(c.saldoCaixa)}</div></div>
     </div>
+
+    <h2 class="section-title">Zona de risco</h2>
+    <div class="card">
+      <button class="btn btn-danger" id="btn-delete-month">🗑️ Excluir ${monthLabel(m.key)}</button>
+      <div class="note">Remove este mês e todas as despesas lançadas nele — útil se você lançou um mês errado por engano. Não pode ser desfeito.</div>
+    </div>
   `;
 
   document.getElementById('sel-month').addEventListener('change', e => { ACTIVE_MONTH_KEY = e.target.value; renderLancar(); });
@@ -427,6 +450,19 @@ function renderLancar() {
   bindNum('f-pl', 'proLabore', false);
   bindNum('f-das', 'dasPago', true);
   bindNum('f-dist', 'lucroDistribuidoOverride', true);
+
+  document.getElementById('btn-delete-month').addEventListener('click', () => {
+    if (STATE.months.length <= 1) {
+      alert('Não é possível excluir o único mês cadastrado. Lance outro mês antes de remover este.');
+      return;
+    }
+    if (!confirm(`Excluir ${monthLabel(m.key)}? Isso remove o faturamento, pró-labore e despesas lançados nele. Não pode ser desfeito.`)) return;
+    STATE.months = STATE.months.filter(mm => mm.key !== m.key);
+    if (INICIO_MONTH_KEY === m.key) INICIO_MONTH_KEY = null;
+    ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1].key;
+    persist();
+    goTo('historico');
+  });
 }
 
 /* ============================== TAB: HISTÓRICO ============================== */

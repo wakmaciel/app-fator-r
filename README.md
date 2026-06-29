@@ -14,11 +14,14 @@ navegador** (localStorage). Nada é enviado para nenhum servidor.
   define o seu DAS) e a **projeção para o mês que vem**, com o valor mínimo de
   pró-labore que falta retirar para não cair no Anexo V — e, quando há sobra,
   mostra quanto disso poderia ir como lucro distribuído em vez de pró-labore
-  para pagar menos INSS.
+  para pagar menos INSS. Dá pra escolher qual mês ver no painel, não só o
+  mais recente.
 - **Botão + flutuante**: lança uma despesa ou cria o próximo mês sem precisar
   navegar até uma aba específica.
 - **Lançamento mensal** de faturamento, pró-labore, regime (MEI/ME), DAS pago
-  e despesas do mês (com categorias e quebra visual), tudo na aba Lançar.
+  e despesas do mês (com categorias e quebra visual), tudo na aba Mês — que
+  também permite **excluir um mês** lançado por engano (Zona de risco, no
+  fim da tela).
 - **Histórico** de todos os meses lançados, com o Anexo de cada um.
 - **Empréstimos**: parcelas, saldo devedor, mês de início.
 - **Fechamento anual em CSV**: exporta uma planilha com todos os meses de um
