@@ -3,6 +3,8 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]   # troque para "master" se for o nome da sua branch padrão
+  workflow_dispatch:   # deploy manual — se um deploy falhar, dispare por aqui;
+                       # usar "re-run" duplica o artifact do Pages e falha de novo
 
 permissions:
   contents: read
