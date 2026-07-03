@@ -147,4 +147,28 @@ test('exatamente 28% de Fator R não cai para Anexo V por arredondamento de pont
   assert.ok(proj.folga >= -0.005, `folga não deveria aparentar déficit num match exato (folga=${proj.folga})`);
 });
 
+test('projectNextMonth expõe o pró-labore do MÊS e o excedente real (bug do aviso da tela inicial)', () => {
+  const projectNextMonth = get('projectNextMonth');
+  const idx = months.length - 1; // 2026-05, proLabore = 2520
+  const proj = projectNextMonth(months, idx, params);
+  assert.strictEqual(proj.proLaboreMes, months[idx].proLabore, 'proLaboreMes deve ser o pró-labore lançado no próprio mês');
+  const esperado = Math.max(0, months[idx].proLabore - proj.proLaboreMinimo);
+  assert.ok(Math.abs(proj.excedenteMes - esperado) < 0.001, `excedenteMes errado: ${proj.excedenteMes} vs ${esperado}`);
+  // quando o mínimo é clampado em 0, o excedente NUNCA pode passar do pró-labore do mês
+  assert.ok(proj.excedenteMes <= months[idx].proLabore + 0.001, 'excedente não pode ser maior que o pró-labore do mês');
+});
+
+test('numToInputMoney formata dinheiro com 2 decimais no padrão BR', () => {
+  const numToInputMoney = get('numToInputMoney');
+  const numToInputMoneyBlankZero = get('numToInputMoneyBlankZero');
+  const parseBRNumber = get('parseBRNumber');
+  assert.strictEqual(numToInputMoney(1621), '1.621,00');
+  assert.strictEqual(numToInputMoney(86.05), '86,05');
+  assert.strictEqual(numToInputMoney(0), '0,00');
+  assert.strictEqual(numToInputMoney(null), '');
+  assert.strictEqual(numToInputMoneyBlankZero(0), '');
+  // ida e volta sem perda: o que o campo mostra, parseBRNumber lê de volta
+  assert.strictEqual(parseBRNumber(numToInputMoney(8475.55)), 8475.55);
+});
+
 console.log(`\n${passed} teste(s) passaram.`);

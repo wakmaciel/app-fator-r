@@ -10,7 +10,11 @@ let INICIO_MONTH_KEY = null; // mês escolhido pra ver o resumo na aba Início
 let chartRef = null;
 let backupMsg = '';
 
-function persist() { saveState(STATE); }
+function persist() {
+  saveState(STATE);
+  // backup automático no Google Drive (se estiver ativado nos Ajustes)
+  if (typeof driveScheduleBackup === 'function') driveScheduleBackup(() => STATE);
+}
 
 function isLightMode() {
   return !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches);
@@ -151,7 +155,7 @@ function renderInicio() {
   let alertHTML = '';
   if (isME) {
     const proj = projectNextMonth(STATE.months, selIdx, STATE.params);
-    const economiaInss = Math.max(proj.folga, 0) * STATE.params.aliqInss;
+    const metaPct = fmtPct(STATE.params.fatorRMeta);
     let variant, titulo, msg, showBadges = true;
     if (proj.sf <= 0) {
       variant = 'info';
@@ -161,15 +165,26 @@ function renderInicio() {
     } else if (proj.folga < -0.005) {
       variant = 'danger';
       titulo = '⚠️ Risco de cair no Anexo V';
-      msg = `Faltam <strong>${fmtBRL(-proj.folga)}</strong> de pró-labore neste mês para manter o Fator R ≥ 28% e seguir no Anexo III no mês que vem. Mínimo necessário este mês: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>.`;
+      msg = `Você lançou <strong>${fmtBRL(proj.proLaboreMes)}</strong> de pró-labore neste mês, mas o mínimo para manter o Fator R ≥ ${metaPct} é <strong>${fmtBRL(proj.proLaboreMinimo)}</strong> — faltam <strong>${fmtBRL(-proj.folga)}</strong>. Sem esse ajuste, o mês que vem cai no Anexo V.`;
     } else if (proj.folga < 0.01) {
       variant = 'success';
       titulo = '✅ No ponto certo';
       msg = `Você está retirando exatamente o mínimo (<strong>${fmtBRL(proj.proLaboreMinimo)}</strong>) para manter o Anexo III no mês que vem — sem pagar INSS além do necessário.`;
     } else {
+      // Sugestão de economia: só a parte do pró-labore que dá pra cortar sem
+      // furar a meta do Fator R E sem ficar abaixo de 1 salário mínimo (piso
+      // legal usual de contribuição do sócio).
+      const reduzivel = Math.max(0, proj.proLaboreMes - Math.max(proj.proLaboreMinimo, STATE.params.salarioMinimo));
+      // INSS incide só até o teto — a economia real é a diferença entre as bases
+      const baseAtual = Math.min(proj.proLaboreMes, STATE.params.tetoInss);
+      const baseNova = Math.min(proj.proLaboreMes - reduzivel, STATE.params.tetoInss);
+      const economiaInss = Math.max(0, baseAtual - baseNova) * STATE.params.aliqInss;
       variant = 'success';
       titulo = '✅ Dentro da meta — com sobra';
-      msg = `O mínimo necessário este mês é <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>. Você está retirando <strong>${fmtBRL(proj.folga + proj.proLaboreMinimo)}</strong>, ou seja, <strong>${fmtBRL(proj.folga)}</strong> acima do mínimo. Se quiser pagar menos INSS, pode levar essa diferença como lucro distribuído em vez de pró-labore — economia estimada de <strong>${fmtBRL(economiaInss)}</strong> de INSS.`;
+      msg = `O mínimo de pró-labore para manter o Anexo III no mês que vem é <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>. Você lançou <strong>${fmtBRL(proj.proLaboreMes)}</strong> neste mês — <strong>${fmtBRL(proj.excedenteMes)}</strong> acima do mínimo.` +
+        (reduzivel > 0.005
+          ? ` Se quiser pagar menos INSS, até <strong>${fmtBRL(reduzivel)}</strong> dessa sobra pode virar lucro distribuído (mantendo pelo menos 1 salário mínimo de pró-labore) — economia estimada de <strong>${fmtBRL(economiaInss)}</strong> de INSS.`
+          : '');
     }
     alertHTML = `
     <div class="alert alert-${variant}">
@@ -363,24 +378,24 @@ function renderLancar() {
     <div class="card">
       <div class="field">
         <label>Faturamento do mês</label>
-        <input type="text" inputmode="decimal" id="f-fat" value="${numToInputBlankZero(m.faturamento)}" placeholder="20,00">
+        <input type="text" inputmode="decimal" id="f-fat" value="${numToInputMoneyBlankZero(m.faturamento)}" placeholder="20,00">
       </div>
       ${m.regime === 'ME' ? `
         <div class="field">
           <label>Pró-labore retirado</label>
-          <input type="text" inputmode="decimal" id="f-pl" value="${numToInputBlankZero(m.proLabore)}" placeholder="20,00">
+          <input type="text" inputmode="decimal" id="f-pl" value="${numToInputMoneyBlankZero(m.proLabore)}" placeholder="20,00">
           <div class="hint ${proj && proj.folga < -0.005 ? 'hint-danger' : 'hint-ok'}">
-            ${proj ? `Mínimo p/ manter Anexo III no mês que vem: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>` : ''}
+            ${proj ? `Mínimo p/ manter Anexo III no mês que vem: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>${proj.folga < -0.005 ? ` — faltam <strong>${fmtBRL(-proj.folga)}</strong>` : ''}` : ''}
           </div>
         </div>
         <div class="field">
           <label>DAS informado pelo contador (em branco = usar estimativa)</label>
-          <input type="text" inputmode="decimal" id="f-das" value="${numToInput(m.dasPago)}" placeholder="${fmtBRL(c.dasEstimado)} (estimado)">
+          <input type="text" inputmode="decimal" id="f-das" value="${numToInputMoney(m.dasPago)}" placeholder="${fmtBRL(c.dasEstimado)} (estimado)">
         </div>
       ` : `
         <div class="field">
           <label>DAS-MEI pago (em branco = usar o valor padrão)</label>
-          <input type="text" inputmode="decimal" id="f-das" value="${numToInput(m.dasPago)}" placeholder="${fmtBRL(STATE.params.dasMei)} (padrão)">
+          <input type="text" inputmode="decimal" id="f-das" value="${numToInputMoney(m.dasPago)}" placeholder="${fmtBRL(STATE.params.dasMei)} (padrão)">
         </div>
       `}
     </div>
@@ -414,7 +429,7 @@ function renderLancar() {
     <div class="card">
       <div class="field">
         <label>Lucro distribuído este mês (em branco = distribuir tudo)</label>
-        <input type="text" inputmode="decimal" id="f-dist" value="${numToInput(m.lucroDistribuidoOverride)}" placeholder="${fmtBRL(Math.max(c.lucroDisponivel, 0))} (automático)">
+        <input type="text" inputmode="decimal" id="f-dist" value="${numToInputMoney(m.lucroDistribuidoOverride)}" placeholder="${fmtBRL(Math.max(c.lucroDisponivel, 0))} (automático)">
       </div>
       <div class="row"><div class="l">Saldo retido em caixa</div><div class="v">${fmtBRL(c.saldoCaixa)}</div></div>
     </div>
@@ -496,6 +511,81 @@ function renderHistorico() {
   }));
 }
 
+/* ============================== BACKUP NO GOOGLE DRIVE (card dos Ajustes) ============================== */
+function driveCardHTML() {
+  if (typeof driveStatus !== 'function') {
+    return `<div class="note" style="margin-top:0;">Backup no Google Drive indisponível (o módulo não carregou).</div>`;
+  }
+  const st = driveStatus();
+  const last = st.lastBackup ? new Date(st.lastBackup).toLocaleString('pt-BR') : null;
+  if (!st.enabled) {
+    return `
+      <div class="note" style="margin-top:0;">Conecte sua conta Google e o app salva automaticamente um arquivo <strong>fator-r-backup.json</strong> no seu Drive alguns segundos depois de cada alteração — meses, despesas, empréstimos e parâmetros.</div>
+      <button class="btn btn-primary" id="btn-drive-on">Conectar ao Google Drive</button>
+    `;
+  }
+  return `
+    <div class="row"><div class="l">Backup automático</div><div class="v"><span class="badge badge-iii">Ativado</span></div></div>
+    <div class="row"><div class="l">Último backup</div><div class="v dim">${st.busy ? 'enviando…' : (last || 'ainda não feito')}</div></div>
+    ${st.error ? `<div class="note" style="color:var(--danger);">Última tentativa falhou: ${esc(st.error)} Toque em "Fazer backup agora" para tentar de novo (pode pedir login).</div>` : ''}
+    <button class="btn btn-secondary" id="btn-drive-now" ${st.busy ? 'disabled' : ''}>Fazer backup agora</button>
+    <button class="btn btn-secondary" id="btn-drive-restore" style="margin-top:8px;">Restaurar do Drive</button>
+    <button class="btn btn-ghost" id="btn-drive-off" style="margin-top:8px;">Desativar backup automático</button>
+  `;
+}
+
+function wireDriveCard() {
+  const btnOn = document.getElementById('btn-drive-on');
+  if (btnOn) btnOn.addEventListener('click', async () => {
+    btnOn.disabled = true;
+    try {
+      await driveConnect(() => STATE);
+    } catch (e) {
+      alert('Não foi possível conectar ao Google Drive: ' + e.message);
+      btnOn.disabled = false;
+    }
+    updateDriveCard();
+  });
+
+  const btnNow = document.getElementById('btn-drive-now');
+  // interactive=true: se a sessão do Google expirou, pode reabrir o login
+  if (btnNow) btnNow.addEventListener('click', () => driveRunBackup(() => STATE, true));
+
+  const btnOff = document.getElementById('btn-drive-off');
+  if (btnOff) btnOff.addEventListener('click', () => {
+    if (!confirm('Desativar o backup automático? O arquivo já salvo continua no seu Drive.')) return;
+    driveDisconnect();
+    updateDriveCard();
+  });
+
+  const btnRestore = document.getElementById('btn-drive-restore');
+  if (btnRestore) btnRestore.addEventListener('click', async () => {
+    if (!confirm('Substituir os dados DESTE aparelho pelo backup salvo no Drive? Faça isso ao trocar de aparelho ou recuperar dados. Não pode ser desfeito.')) return;
+    try {
+      const parsed = await driveRestore();
+      if (!Array.isArray(parsed.months) || !parsed.params) throw new Error('O arquivo no Drive não parece um backup válido do Fator R.');
+      parsed.months.forEach(m => { if (!Array.isArray(m.despesas)) m.despesas = []; });
+      if (!Array.isArray(parsed.loans)) parsed.loans = [];
+      if (!parsed.empresa) parsed.empresa = { nome: '' };
+      STATE = parsed;
+      ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
+      saveState(STATE);
+      backupMsg = 'Backup restaurado do Google Drive.';
+      ACTIVE_TAB = 'inicio';
+      renderAll();
+    } catch (e) {
+      alert('Falha ao restaurar: ' + e.message);
+    }
+  });
+}
+
+function updateDriveCard() {
+  const box = document.getElementById('drive-card');
+  if (!box) return;
+  box.innerHTML = driveCardHTML();
+  wireDriveCard();
+}
+
 /* ============================== TAB: AJUSTES ============================== */
 function renderAjustes() {
   setTopbar('Ajustes', 'Empresa, parâmetros e backup');
@@ -512,8 +602,8 @@ function renderAjustes() {
 
     <h2 class="section-title">Parâmetros gerais</h2>
     <div class="card">
-      <div class="field"><label>Salário mínimo nacional</label><input type="text" inputmode="decimal" id="p-sal" value="${numToInput(p.salarioMinimo)}" placeholder="20,00"></div>
-      <div class="field"><label>Teto do INSS</label><input type="text" inputmode="decimal" id="p-teto" value="${numToInput(p.tetoInss)}" placeholder="20,00"></div>
+      <div class="field"><label>Salário mínimo nacional</label><input type="text" inputmode="decimal" id="p-sal" value="${numToInputMoney(p.salarioMinimo)}" placeholder="20,00"></div>
+      <div class="field"><label>Teto do INSS</label><input type="text" inputmode="decimal" id="p-teto" value="${numToInputMoney(p.tetoInss)}" placeholder="20,00"></div>
       <div class="field"><label>Alíquota INSS sobre pró-labore (%)</label><input type="text" inputmode="decimal" id="p-aliqinss" value="${numToInput(parseFloat((p.aliqInss * 100).toFixed(2)))}" placeholder="20,00"></div>
       <div class="field"><label>Meta do Fator R (%)</label><input type="text" inputmode="decimal" id="p-meta" value="${numToInput(parseFloat((p.fatorRMeta * 100).toFixed(2)))}" placeholder="20,00"></div>
       <div class="field">
@@ -525,7 +615,7 @@ function renderAjustes() {
           <option value="misto" ${p.atividadeMei === 'misto' ? 'selected' : ''}>Comércio e Serviço (R$87,05)</option>
         </select>
       </div>
-      <div class="field"><label>DAS-MEI fixo</label><input type="text" inputmode="decimal" id="p-dasmei" value="${numToInput(p.dasMei)}" placeholder="20,00"></div>
+      <div class="field"><label>DAS-MEI fixo</label><input type="text" inputmode="decimal" id="p-dasmei" value="${numToInputMoney(p.dasMei)}" placeholder="20,00"></div>
       <div class="note" style="margin-top:0;">Honorários contábeis não são mais um valor fixo aqui — lance-os como despesa (categoria "Contabilidade") sempre que pagar, assim o valor acompanha quando o preço do seu contador mudar.</div>
     </div>
 
@@ -539,7 +629,7 @@ function renderAjustes() {
           <div class="field"><label>Nome</label><input type="text" data-loan="${l.id}" data-field="nome" value="${esc(l.nome)}"></div>
           <div class="two-col">
             <div class="field"><label>Nº parcelas</label><input type="number" step="1" data-loan="${l.id}" data-field="nParcelas" value="${l.nParcelas || 0}"></div>
-            <div class="field"><label>Valor da parcela</label><input type="text" inputmode="decimal" data-loan="${l.id}" data-field="valorParcela" value="${numToInputBlankZero(l.valorParcela)}" placeholder="20,00"></div>
+            <div class="field"><label>Valor da parcela</label><input type="text" inputmode="decimal" data-loan="${l.id}" data-field="valorParcela" value="${numToInputMoneyBlankZero(l.valorParcela)}" placeholder="20,00"></div>
           </div>
           <div class="two-col">
             <div class="field"><label>Parcelas pagas</label><input type="number" step="1" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>
@@ -559,6 +649,9 @@ function renderAjustes() {
         <button class="btn btn-secondary" id="btn-export-csv">Exportar ano (.csv)</button>
       ` : `<div class="note">Lance pelo menos um mês para poder exportar.</div>`}
     </div>
+
+    <h2 class="section-title">Backup automático no Google Drive</h2>
+    <div class="card" id="drive-card">${driveCardHTML()}</div>
 
     <h2 class="section-title">Backup de dados</h2>
     <div class="card">
@@ -596,16 +689,18 @@ function renderAjustes() {
     persist();
   });
 
-  const bindParam = (id, field, isPct) => document.getElementById(id).addEventListener('change', e => {
+  // kind: 'money' = reais (reformata com 2 decimais ao salvar) • 'pct' = percentual
+  const bindParam = (id, field, kind) => document.getElementById(id).addEventListener('change', e => {
     const v = parseBRNumber(e.target.value) || 0;
-    p[field] = isPct ? v / 100 : v;
+    p[field] = kind === 'pct' ? v / 100 : v;
+    if (kind === 'money') e.target.value = numToInputMoney(v);
     persist();
   });
-  bindParam('p-sal', 'salarioMinimo', false);
-  bindParam('p-teto', 'tetoInss', false);
-  bindParam('p-aliqinss', 'aliqInss', true);
-  bindParam('p-meta', 'fatorRMeta', true);
-  bindParam('p-dasmei', 'dasMei', false);
+  bindParam('p-sal', 'salarioMinimo', 'money');
+  bindParam('p-teto', 'tetoInss', 'money');
+  bindParam('p-aliqinss', 'aliqInss', 'pct');
+  bindParam('p-meta', 'fatorRMeta', 'pct');
+  bindParam('p-dasmei', 'dasMei', 'money');
 
   document.getElementById('p-atividade-mei').addEventListener('change', e => {
     p.atividadeMei = e.target.value;
@@ -619,7 +714,7 @@ function renderAjustes() {
     const f = el.dataset.field;
     if (f === 'nome' || f === 'mesInicio') loan[f] = el.value;
     else if (f === 'nParcelas' || f === 'parcelasPagas') loan[f] = parseInt(el.value, 10) || 0;
-    else loan[f] = parseBRNumber(el.value) || 0;
+    else { loan[f] = parseBRNumber(el.value) || 0; el.value = numToInputMoneyBlankZero(loan[f]); }
     persist();
   }));
   document.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', () => {
@@ -636,6 +731,8 @@ function renderAjustes() {
     const year = document.getElementById('sel-ano-export').value;
     exportYearCSV(STATE, year);
   });
+
+  wireDriveCard();
 
   document.getElementById('btn-export').addEventListener('click', () => exportBackup(STATE));
   document.getElementById('file-import').addEventListener('change', e => {
@@ -676,6 +773,10 @@ function renderAll() {
   ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
   renderAll();
   document.getElementById('fab-add').addEventListener('click', openAddMenu);
+  // atualiza o card do Drive quando um backup começa/termina/falha
+  document.addEventListener('drive-status', () => { if (ACTIVE_TAB === 'ajustes') updateDriveCard(); });
+  // se acabou de voltar do login do Google (fluxo redirect do PWA), já faz o 1º backup
+  if (typeof driveAfterInit === 'function') driveAfterInit(() => STATE);
   if (window.matchMedia) {
     window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => renderAll());
   }

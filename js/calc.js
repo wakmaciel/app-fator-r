@@ -93,6 +93,17 @@ function numToInputBlankZero(n) {
   return numToInput(n);
 }
 
+/* Para campos de DINHEIRO: sempre com 2 casas decimais e separador de milhar
+   no padrão brasileiro (1621 → "1.621,00"). parseBRNumber lê de volta sem perda. */
+function numToInputMoney(n) {
+  if (n === null || n === undefined || isNaN(n)) return '';
+  return Number(n).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function numToInputMoneyBlankZero(n) {
+  if (!n) return '';
+  return numToInputMoney(n);
+}
+
 function mkMonth(key, regime, faturamento, proLabore, dasPago) {
   return {
     key, regime, faturamento, proLabore,
@@ -226,8 +237,15 @@ function projectNextMonth(months, idx, params) {
   const fatorR = sf ? sp / sf : 0;
   const anexoProjetado = fatorR >= params.fatorRMeta - 1e-9 ? 'III' : 'V';
   const proLaboreMinimo = Math.max(0, params.fatorRMeta * sf - spOutros);
-  const folga = sp - params.fatorRMeta * sf; // >0 = margem em R$ acima do mínimo
-  return { sf, sp, fatorR, anexoProjetado, proLaboreMinimo, folga, windowSize };
+  const folga = sp - params.fatorRMeta * sf; // >0 = margem em R$ acima do mínimo (na janela toda)
+  /* O que o usuário vê no aviso é sempre em relação ao MÊS ATUAL:
+     proLaboreMes  = o que foi lançado neste mês
+     excedenteMes  = quanto do pró-labore DESTE mês está acima do mínimo — é o
+     máximo que daria pra converter em lucro distribuído sem perder a meta.
+     (Matematicamente = min(folga, proLaboreMes), já que o mínimo é clampado em 0.) */
+  const proLaboreMes = months[idx].proLabore;
+  const excedenteMes = Math.max(0, proLaboreMes - proLaboreMinimo);
+  return { sf, sp, fatorR, anexoProjetado, proLaboreMinimo, folga, windowSize, proLaboreMes, excedenteMes };
 }
 
 /* ---------- gauge SVG (semicírculo do Fator R) ---------- */
