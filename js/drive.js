@@ -30,9 +30,11 @@ function driveIsStandalone() {
 }
 
 /* URL desta página, sem query/hash — precisa estar cadastrada como
-   "URI de redirecionamento autorizado" no client OAuth do Google Cloud. */
+   "URI de redirecionamento autorizado" no client OAuth do Google Cloud.
+   O PWA instalado abre em .../index.html (start_url do manifest); removemos
+   o sufixo pra sempre enviar a mesma URI cadastrada (terminada em "/"). */
 function driveRedirectUri() {
-  return location.origin + location.pathname;
+  return location.origin + location.pathname.replace(/index\.html?$/, '');
 }
 
 function driveRedirectAuth() {
