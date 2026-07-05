@@ -48,6 +48,11 @@
   --gauge-tick: #9F8FD6;
   --select-option-bg: #241653;
 
+  /* distância da doca até a borda de baixo da tela:
+     em iPhones com home indicator (inset ≈ 34px) ela desce pra ~20px,
+     flutuando logo acima do traço; em telas sem inset fica nos 8px. */
+  --dock-bottom: max(8px, calc(env(safe-area-inset-bottom, 0px) - 14px));
+
   --radius: 22px;
   --font-display: 'Space Grotesk', system-ui, sans-serif;
   --font-body: 'Inter', system-ui, -apple-system, sans-serif;
@@ -213,7 +218,7 @@ button, a, input, select, textarea { touch-action: manipulation; }
 /* ---------- barra de abas flutuante (doca) ---------- */
 #tabbar {
   position: fixed;
-  bottom: calc(env(safe-area-inset-bottom) + 8px);
+  bottom: var(--dock-bottom);
   left: 50%;
   transform: translateX(-50%);
   width: calc(100% - 24px);
@@ -485,7 +490,7 @@ select option { background: var(--select-option-bg); color: var(--text); }
 #fab-add {
   position: fixed;
   right: calc((100vw - min(100vw, 480px)) / 2 + 18px);
-  bottom: calc(env(safe-area-inset-bottom) + 80px);
+  bottom: calc(var(--dock-bottom) + 72px);
   width: 58px;
   height: 58px;
   border-radius: 50%;
