@@ -50,9 +50,10 @@ function renderTabbar() {
   bar.querySelectorAll('.tab-btn').forEach(b => b.addEventListener('click', () => { ACTIVE_TAB = b.dataset.tab; renderAll(); }));
 }
 
-function setTopbar(title, sub) {
+function setTopbar(title, sub, actionsHTML) {
   document.getElementById('topbar-title').textContent = title;
   document.getElementById('topbar-sub').textContent = sub;
+  document.getElementById('topbar-actions').innerHTML = actionsHTML || '';
 }
 
 function goTo(tab, monthKey) {
@@ -133,6 +134,77 @@ function criarNovoMes() {
 }
 
 /* ============================== TAB: INÍCIO ============================== */
+
+/* Sparkline em SVG puro (sem Chart.js) pros mini-gráficos dos KPIs.
+   Só visualização: recebe a série pronta e desenha linha + área. */
+function sparklineSVG(values, color) {
+  if (!Array.isArray(values) || values.length < 2) return '';
+  const nums = values.map(v => (isFinite(v) ? v : 0));
+  const min = Math.min(...nums), max = Math.max(...nums);
+  const range = (max - min) || 1;
+  const W = 100, H = 30, P = 3;
+  const pts = nums.map((v, i) => [
+    P + (i / (nums.length - 1)) * (W - 2 * P),
+    P + (1 - (v - min) / range) * (H - 2 * P),
+  ].map(n => +n.toFixed(1)));
+  const line = pts.map(p => p.join(',')).join(' ');
+  const area = `M${pts[0][0]},${H} L${pts.map(p => p.join(',')).join(' L')} L${pts[pts.length - 1][0]},${H} Z`;
+  return `<svg class="kpi-spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${area}" fill="${hexToRgba(color, 0.14)}"/>
+    <polyline points="${line}" fill="none" stroke="${color}" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+  </svg>`;
+}
+
+/* Medidor do hero: arco de 240° com a meta escrita no centro.
+   Mesma escala do gaugeSVG antigo (0 a 60%), só muda a apresentação. */
+function heroGaugeSVG(fatorR, meta, anexo) {
+  const cx = 100, cy = 92, r = 76, sw = 13, scaleMax = 0.6;
+  const pt = (rad, ang) => { const a = ang * Math.PI / 180; return [(cx + rad * Math.cos(a)).toFixed(1), (cy - rad * Math.sin(a)).toFixed(1)]; };
+  // escala varre 240° no sentido horário: 210° = 0% … -30° = 60%
+  const [x1, y1] = pt(r, 210);
+  const [x2, y2] = pt(r, -30);
+  const arc = `M ${x1} ${y1} A ${r} ${r} 0 1 1 ${x2} ${y2}`;
+  const pct = Math.max(0, Math.min(100, (fatorR / scaleMax) * 100)); // fração do arco preenchida (pathLength=100)
+  const angMeta = 210 - Math.max(0, Math.min(1, meta / scaleMax)) * 240;
+  const [mx1, my1] = pt(r - 11, angMeta);
+  const [mx2, my2] = pt(r + 9, angMeta);
+  const color = anexo === 'III' ? 'var(--primary)' : 'var(--danger)';
+  const dentro = fatorR >= meta - 1e-9;
+  return `<svg viewBox="0 0 200 142" aria-hidden="true">
+    <path d="${arc}" stroke="var(--gauge-track)" stroke-width="${sw}" fill="none" stroke-linecap="round"/>
+    ${pct > 0.5 ? `<path d="${arc}" stroke="${color}" stroke-width="${sw}" fill="none" stroke-linecap="round"
+      pathLength="100" stroke-dasharray="${pct.toFixed(1)} 100"/>` : ''}
+    <line x1="${mx1}" y1="${my1}" x2="${mx2}" y2="${my2}" stroke="var(--gauge-tick)" stroke-width="2"/>
+    <text x="${cx}" y="80" text-anchor="middle" fill="var(--text-dim)" font-size="13" font-weight="500">Meta</text>
+    <text x="${cx}" y="106" text-anchor="middle" fill="var(${dentro ? '--success' : '--danger'})" font-size="22" font-weight="700">≥ ${fmtPct(meta)}</text>
+  </svg>`;
+}
+
+/* Sheet pra escolher o mês do resumo (substitui o antigo <select> no topo da Home) */
+function openMonthPickerSheet() {
+  const all = computeAll(STATE);
+  const items = STATE.months.map((mm, i) => {
+    const right = mm.regime === 'MEI'
+      ? '<span class="chip">MEI</span>'
+      : `${fmtPct(all[i].fatorR)} <span class="badge ${all[i].anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${all[i].anexo}</span>`;
+    return `<button class="mp-item ${mm.key === INICIO_MONTH_KEY ? 'sel' : ''}" data-mk="${mm.key}">
+      <span>${monthLabel(mm.key)}</span><span class="r">${right}</span>
+    </button>`;
+  }).reverse().join('');
+  openSheet(`
+    <div class="sheet-title">Ver resumo de qual mês?</div>
+    <div class="mp-list">${items}</div>
+    <button class="btn btn-ghost sheet-action" id="sheet-cancelar">Cancelar</button>
+  `);
+  document.getElementById('sheet-cancelar').addEventListener('click', closeSheet);
+  document.querySelectorAll('.mp-item').forEach(el => el.addEventListener('click', () => {
+    INICIO_MONTH_KEY = el.dataset.mk;
+    closeSheet();
+    renderInicio();
+  }));
+}
+
 function renderInicio() {
   ensureInicioMonth();
   const all = computeAll(STATE);
@@ -149,26 +221,101 @@ function renderInicio() {
   const totImp = sum((m, c) => c.dasUsado + c.inss + c.despesasMes);
 
   const nomeEmpresa = STATE.empresa?.nome ? STATE.empresa.nome + ' • ' : '';
-  setTopbar('Fator R', `${nomeEmpresa}Painel • ${monthLabelExt(sel.key)}`);
+  setTopbar('Fator R', `${nomeEmpresa}${monthLabel(sel.key)}`, `
+    <button class="icon-btn" id="btn-pick-month" aria-label="Escolher mês do resumo">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    </button>`);
 
   const isME = sel.regime === 'ME';
-  let alertHTML = '';
+  const proj = isME ? projectNextMonth(STATE.months, selIdx, STATE.params) : null;
+
+  /* ---------- hero: Fator R do mês + medidor com a meta ---------- */
+  const dentro = selC.fatorR >= STATE.params.fatorRMeta - 1e-9;
+  const heroHTML = isME ? `
+    <div class="card hero">
+      <div class="hero-grid">
+        <div class="hero-left">
+          <div class="hero-label">Fator R</div>
+          <div class="hero-value">${fmtPct(selC.fatorR)}</div>
+          <span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span>
+        </div>
+        <div class="hero-gauge">
+          ${heroGaugeSVG(selC.fatorR, STATE.params.fatorRMeta, selC.anexo)}
+          <div class="hero-status ${dentro ? 'ok' : 'bad'}">${dentro ? 'Dentro da meta ✅' : 'Abaixo da meta ⚠️'}</div>
+        </div>
+      </div>
+    </div>` : `
+    <div class="card hero" style="text-align:center;">
+      <div class="hero-label">Fator R</div>
+      <div style="padding:14px 0 4px;"><span class="badge badge-mei">MEI — sem Fator R</span></div>
+    </div>`;
+
+  /* ---------- KPIs do mês, com o total do ano / mínimo como contexto ---------- */
+  const N = Math.min(12, selIdx + 1);
+  const mSlice = STATE.months.slice(selIdx + 1 - N, selIdx + 1);
+  const cSlice = all.slice(selIdx + 1 - N, selIdx + 1);
+  const light = isLightMode();
+  const cores = {
+    fat: light ? '#0369A1' : '#38BDF8',
+    pl: light ? '#7C3AED' : '#A78BFA',
+    lucro: light ? '#15803D' : '#34D399',
+    imp: light ? '#E11D48' : '#FB7185',
+  };
+  const impMes = selC.dasUsado + selC.inss + selC.despesasMes;
+
+  const kpi = (label, valor, valClass, sub, cor, icone, serie) => `
+    <div class="kpi">
+      <div class="kpi-head">
+        <div class="label">${label}</div>
+        <div class="kpi-icon" style="background:${hexToRgba(cor, 0.14)};">
+          <svg viewBox="0 0 24 24" style="stroke:${cor};">${icone}</svg>
+        </div>
+      </div>
+      <div class="value ${valClass}">${valor}</div>
+      <div class="kpi-sub">${sub}</div>
+      ${sparklineSVG(serie, cor)}
+    </div>`;
+
+  const kpisHTML = `
+    <div class="kpi-grid">
+      ${kpi('Faturamento', fmtBRL(sel.faturamento), 'chart-revenue',
+        `Ano: <strong>${fmtBRL(totFat)}</strong>`, cores.fat,
+        '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M14.5 9.3c-.5-.8-1.4-1.3-2.5-1.3-1.7 0-3 .9-3 2s1.2 1.7 3 2 3 .9 3 2-1.3 2-3 2c-1.1 0-2-.5-2.5-1.3"/>',
+        mSlice.map(m => m.faturamento))}
+      ${kpi('Pró-labore', fmtBRL(sel.proLabore), '',
+        proj ? `Mínimo: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>` : `Ano: <strong>${fmtBRL(totPL)}</strong>`, cores.pl,
+        '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-3.3 3.6-5 8-5s8 1.7 8 5"/>',
+        mSlice.map(m => m.proLabore))}
+      ${kpi('Lucro distribuído', fmtBRL(selC.lucroDistribuido), 'success',
+        sel.faturamento > 0 ? `% do faturamento: <strong>${fmtPct(selC.lucroDistribuido / sel.faturamento)}</strong>` : `Ano: <strong>${fmtBRL(totLucro)}</strong>`, cores.lucro,
+        '<path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M16 3.9A9 9 0 0 1 20.1 8H16z"/>',
+        cSlice.map(c => c.lucroDistribuido))}
+      ${kpi('Impostos + despesas', fmtBRL(impMes), 'danger',
+        sel.faturamento > 0 ? `% do faturamento: <strong>${fmtPct(impMes / sel.faturamento)}</strong>` : `Ano: <strong>${fmtBRL(totImp)}</strong>`, cores.imp,
+        '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/>',
+        cSlice.map(c => c.dasUsado + c.inss + c.despesasMes))}
+    </div>`;
+
+  /* ---------- card de insight (mesmas regras e textos do aviso de antes) ---------- */
+  let insightHTML = '';
   if (isME) {
-    const proj = projectNextMonth(STATE.months, selIdx, STATE.params);
     const metaPct = fmtPct(STATE.params.fatorRMeta);
-    let variant, titulo, msg, showBadges = true;
+    let variant, icone, titulo, msg, showBadges = true;
     if (proj.sf <= 0) {
       variant = 'info';
-      titulo = '📋 Sem faturamento lançado ainda';
+      icone = '📋';
+      titulo = 'Sem faturamento lançado ainda';
       msg = `Lance o faturamento e o pró-labore deste mês para ver a projeção do Fator R e quanto retirar para continuar no Anexo III.`;
       showBadges = false;
     } else if (proj.folga < -0.005) {
       variant = 'danger';
-      titulo = '⚠️ Risco de cair no Anexo V';
+      icone = '⚠️';
+      titulo = 'Risco de cair no Anexo V';
       msg = `Você lançou <strong>${fmtBRL(proj.proLaboreMes)}</strong> de pró-labore neste mês, mas o mínimo para manter o Fator R ≥ ${metaPct} é <strong>${fmtBRL(proj.proLaboreMinimo)}</strong> — faltam <strong>${fmtBRL(-proj.folga)}</strong>. Sem esse ajuste, o mês que vem cai no Anexo V.`;
     } else if (proj.folga < 0.01) {
       variant = 'success';
-      titulo = '✅ No ponto certo';
+      icone = '✅';
+      titulo = 'No ponto certo';
       msg = `Você está retirando exatamente o mínimo (<strong>${fmtBRL(proj.proLaboreMinimo)}</strong>) para manter o Anexo III no mês que vem — sem pagar INSS além do necessário.`;
     } else {
       // Sugestão de economia: só a parte do pró-labore que dá pra cortar sem
@@ -180,83 +327,70 @@ function renderInicio() {
       const baseNova = Math.min(proj.proLaboreMes - reduzivel, STATE.params.tetoInss);
       const economiaInss = Math.max(0, baseAtual - baseNova) * STATE.params.aliqInss;
       variant = 'success';
-      titulo = '✅ Dentro da meta — com sobra';
+      icone = '✅';
+      titulo = 'Dentro da meta — com sobra';
       msg = `O mínimo de pró-labore para manter o Anexo III no mês que vem é <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>. Você lançou <strong>${fmtBRL(proj.proLaboreMes)}</strong> neste mês — <strong>${fmtBRL(proj.excedenteMes)}</strong> acima do mínimo.` +
         (reduzivel > 0.005
           ? ` Se quiser pagar menos INSS, até <strong>${fmtBRL(reduzivel)}</strong> dessa sobra pode virar lucro distribuído (mantendo pelo menos 1 salário mínimo de pró-labore) — economia estimada de <strong>${fmtBRL(economiaInss)}</strong> de INSS.`
           : '');
     }
-    alertHTML = `
+    const icoClass = { success: 'ok', warning: 'warn', danger: 'bad', info: 'info' }[variant];
+    insightHTML = `
     <div class="alert alert-${variant}">
-      <div class="alert-title">${titulo}</div>
-      <div class="alert-body">${msg}</div>
+      <div class="insight-head">
+        <div class="insight-ico ${icoClass}">${icone}</div>
+        <div>
+          <div class="alert-title">${titulo}</div>
+          <div class="alert-body">${msg}</div>
+        </div>
+      </div>
       ${showBadges ? `
-      <div class="alert-rows">
-        <div class="row"><div class="l">Anexo vigente neste mês (usado no DAS)</div><div class="v"><span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span></div></div>
-        <div class="row"><div class="l">Projeção para o mês que vem</div><div class="v"><span class="badge ${proj.anexoProjetado === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${proj.anexoProjetado}</span></div></div>
-      </div>` : ''}
-      <button class="btn btn-secondary" id="btn-ir-lancar">Ajustar pró-labore deste mês →</button>
+      <div class="insight-foot">
+        <div class="insight-stat"><div class="l">Anexo vigente (usado no DAS)</div><div class="v"><span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span></div></div>
+        <div class="insight-stat"><div class="l">Projeção p/ o mês que vem</div><div class="v"><span class="badge ${proj.anexoProjetado === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${proj.anexoProjetado}</span></div></div>
+        <button class="btn btn-primary" id="btn-ir-lancar">Ajustar pró-labore →</button>
+      </div>` : `<button class="btn btn-secondary" id="btn-ir-lancar">Ajustar pró-labore deste mês →</button>`}
     </div>`;
   } else {
-    alertHTML = `
+    insightHTML = `
     <div class="alert alert-info">
-      <div class="alert-title">📌 Você está como MEI</div>
-      <div class="alert-body">Enquanto MEI não existe Fator R nem Anexo III/V — só o DAS-MEI fixo. Quando migrar para ME, troque o regime do mês na aba Mês: a partir dali o pró-labore passa a contar para o Fator R.</div>
+      <div class="insight-head">
+        <div class="insight-ico info">📌</div>
+        <div>
+          <div class="alert-title">Você está como MEI</div>
+          <div class="alert-body">Enquanto MEI não existe Fator R nem Anexo III/V — só o DAS-MEI fixo. Quando migrar para ME, troque o regime do mês na aba Mês: a partir dali o pró-labore passa a contar para o Fator R.</div>
+        </div>
+      </div>
     </div>`;
   }
 
-  const monthOptions = STATE.months.slice().reverse().map(mm => `<option value="${mm.key}" ${mm.key === sel.key ? 'selected' : ''}>${monthLabel(mm.key)} ${mm.regime === 'MEI' ? '(MEI)' : ''}</option>`).join('');
-
   document.getElementById('content').innerHTML = `
-    <h2 class="section-title">Resumo de ${year}</h2>
-    <div class="card tight">
-      <select id="sel-month-inicio">${monthOptions}</select>
-    </div>
-    <div class="kpi-grid">
-      <div class="kpi"><div class="label">Faturamento</div><div class="value chart-revenue">${fmtBRL(totFat)}</div></div>
-      <div class="kpi"><div class="label">Pró-labore</div><div class="value">${fmtBRL(totPL)}</div></div>
-      <div class="kpi"><div class="label">Lucro distribuído</div><div class="value success">${fmtBRL(totLucro)}</div></div>
-      <div class="kpi"><div class="label">Impostos + despesas</div><div class="value danger">${fmtBRL(totImp)}</div></div>
-    </div>
+    ${heroHTML}
+    ${kpisHTML}
 
-    ${alertHTML}
-
-    <h2 class="section-title">Fator R — ${monthLabel(sel.key)}</h2>
-    <div class="card" style="text-align:center;">
-      ${isME ? `
-        <div id="gauge-wrap">
-          ${gaugeSVG(selC.fatorR, STATE.params.fatorRMeta, selC.anexo)}
-          <div class="gauge-pct">${fmtPct(selC.fatorR)}</div>
-          <div class="gauge-sub">
-            <span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span>
-          </div>
-        </div>
-      ` : `
-        <div style="padding:18px 0;">
-          <span class="badge badge-mei">MEI — sem Fator R</span>
-        </div>
-      `}
-    </div>
-
-    <h2 class="section-title">Faturamento × Lucro disponível</h2>
     <div class="card">
-      <canvas id="chart-inicio" height="170"></canvas>
+      <div class="panel-head">
+        <div class="panel-title">Desempenho (12 meses)</div>
+        <button class="link-btn" id="btn-ver-historico">Ver histórico →</button>
+      </div>
+      <div class="chart-legend">
+        <span class="item"><span class="legend-swatch" style="background:${cores.pl};"></span>Fator R</span>
+        <span class="item"><span class="legend-swatch dashed"></span>Meta</span>
+        ${isME ? `<span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span>` : ''}
+      </div>
+      <div class="chart-box"><canvas id="chart-inicio"></canvas></div>
     </div>
+
+    ${insightHTML}
 
     <div class="note">Cálculos de Fator R, RBT12 e DAS seguem a metodologia oficial do PGDAS-D. Confirme sempre os valores de imposto com seu contador.</div>
   `;
 
-  document.getElementById('sel-month-inicio').addEventListener('change', e => {
-    INICIO_MONTH_KEY = e.target.value;
-    renderInicio();
-  });
-
+  document.getElementById('btn-pick-month').addEventListener('click', openMonthPickerSheet);
+  document.getElementById('btn-ver-historico').addEventListener('click', () => goTo('historico'));
   const btnLancar = document.getElementById('btn-ir-lancar');
   if (btnLancar) btnLancar.addEventListener('click', () => goTo('lancar', sel.key));
 
-  const N = Math.min(8, selIdx + 1);
-  const slice = STATE.months.slice(0, selIdx + 1).slice(-N);
-  const sliceC = all.slice(0, selIdx + 1).slice(-N);
   const ctx = document.getElementById('chart-inicio');
   if (typeof Chart === 'undefined') {
     if (ctx) ctx.replaceWith(Object.assign(document.createElement('div'), {
@@ -266,29 +400,25 @@ function renderInicio() {
     return;
   }
   if (chartRef) chartRef.destroy();
-  const light = isLightMode();
-  const revenueColor = light ? '#0369A1' : '#38BDF8';
-  const revenueFill = light ? 'rgba(3,105,161,0.10)' : 'rgba(56,189,248,0.12)';
-  const profitColor = light ? '#15803D' : '#34D399';
-  const profitFill = light ? 'rgba(21,128,61,0.10)' : 'rgba(52,211,153,0.12)';
   const tickColor = light ? '#5B5478' : '#6F5FA0';
-  const legendColor = light ? '#5B5478' : '#B0A0DE';
   const gridColor = light ? 'rgba(40,20,80,0.10)' : '#241A4D';
+  const metaColor = light ? '#15803D' : '#34D399';
+  const metaPctVal = +(STATE.params.fatorRMeta * 100).toFixed(2);
   chartRef = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: slice.map(m => monthLabel(m.key)),
+      labels: mSlice.map(m => monthLabel(m.key)),
       datasets: [
-        { label: 'Faturamento', data: sliceC.map((c, i) => slice[i].faturamento), borderColor: revenueColor, backgroundColor: revenueFill, fill: true, tension: .3, pointRadius: 3 },
-        { label: 'Lucro disp.', data: sliceC.map(c => c.lucroDisponivel), borderColor: profitColor, backgroundColor: profitFill, fill: true, tension: .3, pointRadius: 3 },
+        { label: 'Fator R', data: cSlice.map(c => +(c.fatorR * 100).toFixed(2)), borderColor: cores.pl, backgroundColor: hexToRgba(cores.pl, 0.12), fill: true, tension: .35, pointRadius: 3, borderWidth: 2.5 },
+        { label: 'Meta', data: mSlice.map(() => metaPctVal), borderColor: metaColor, borderDash: [6, 5], pointRadius: 0, borderWidth: 2, fill: false },
       ]
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { labels: { color: legendColor, font: { size: 11 } } } },
+      plugins: { legend: { display: false } },
       scales: {
         x: { ticks: { color: tickColor, font: { size: 10 } }, grid: { color: gridColor } },
-        y: { ticks: { color: tickColor, font: { size: 10 } }, grid: { color: gridColor } }
+        y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => v + '%' }, grid: { color: gridColor } }
       }
     }
   });
