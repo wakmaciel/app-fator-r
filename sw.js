@@ -17,7 +17,17 @@ const ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).catch(() => {})
+    caches.open(CACHE_NAME).then((cache) =>
+      // cache: 'reload' força buscar da rede, ignorando o cache HTTP do navegador
+      // (GitHub Pages usa max-age=600; sem isso o cache novo pode ser preenchido com arquivos velhos)
+      Promise.all(
+        ASSETS.map((url) =>
+          fetch(new Request(url, { cache: 'reload' }))
+            .then((res) => { if (res.ok) return cache.put(url, res); })
+            .catch(() => {})
+        )
+      )
+    )
   );
   self.skipWaiting();
 });

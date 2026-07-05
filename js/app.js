@@ -913,7 +913,15 @@ function renderAll() {
 
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('sw.js').catch(() => {});
+      // updateViaCache: 'none' garante que o sw.js nunca venha do cache HTTP
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+        reg.update().catch(() => {});
+        // PWA aberto pela tela inicial costuma só "resumir" da memória, sem novo load;
+        // checa atualização sempre que o app volta a ficar visível
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => {});
+        });
+      }).catch(() => {});
     });
 
     let refreshing = false;
