@@ -25,7 +25,7 @@ jobs:
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
           sed -i "s/__BUILD_VERSION__/${SHORT_SHA}/" sw.js
-          echo "Cache versionado como cashly-${SHORT_SHA}"
+          echo "Cache versionado como fatorr-app-${SHORT_SHA}"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
