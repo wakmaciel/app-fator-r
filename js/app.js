@@ -58,7 +58,7 @@ function setTopbar(title, sub, actionsHTML) {
 
 function goTo(tab, monthKey) {
   ACTIVE_TAB = tab;
-  if (monthKey) ACTIVE_MONTH_KEY = monthKey;
+  if (monthKey) { ACTIVE_MONTH_KEY = monthKey; INICIO_MONTH_KEY = monthKey; }
   renderAll();
 }
 
@@ -200,6 +200,7 @@ function openMonthPickerSheet() {
   document.getElementById('sheet-cancelar').addEventListener('click', closeSheet);
   document.querySelectorAll('.mp-item').forEach(el => el.addEventListener('click', () => {
     INICIO_MONTH_KEY = el.dataset.mk;
+    ACTIVE_MONTH_KEY = el.dataset.mk;
     closeSheet();
     renderInicio();
   }));
@@ -571,7 +572,7 @@ function renderLancar() {
     </div>
   `;
 
-  document.getElementById('sel-month').addEventListener('change', e => { ACTIVE_MONTH_KEY = e.target.value; renderLancar(); });
+  document.getElementById('sel-month').addEventListener('change', e => { ACTIVE_MONTH_KEY = e.target.value; INICIO_MONTH_KEY = e.target.value; renderLancar(); });
   document.querySelectorAll('[data-regime]').forEach(b => b.addEventListener('click', () => {
     m.regime = b.dataset.regime;
     if (m.regime === 'MEI') m.proLabore = 0;
