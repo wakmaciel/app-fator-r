@@ -181,19 +181,21 @@ function heroGaugeSVG(fatorR, meta, anexo) {
   </svg>`;
 }
 
-/* Sheet pra escolher o mês do resumo (substitui o antigo <select> no topo da Home) */
+/* Sheet pra escolher o mês em foco — usado no topo da Home e da aba Mês.
+   A escolha vale pras duas abas (INICIO_MONTH_KEY e ACTIVE_MONTH_KEY andam juntos). */
 function openMonthPickerSheet() {
   const all = computeAll(STATE);
+  const selKey = ACTIVE_TAB === 'lancar' ? ACTIVE_MONTH_KEY : INICIO_MONTH_KEY;
   const items = STATE.months.map((mm, i) => {
     const right = mm.regime === 'MEI'
       ? '<span class="chip">MEI</span>'
       : `${fmtPct(all[i].fatorR)} <span class="badge ${all[i].anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${all[i].anexo}</span>`;
-    return `<button class="mp-item ${mm.key === INICIO_MONTH_KEY ? 'sel' : ''}" data-mk="${mm.key}">
+    return `<button class="mp-item ${mm.key === selKey ? 'sel' : ''}" data-mk="${mm.key}">
       <span>${monthLabel(mm.key)}</span><span class="r">${right}</span>
     </button>`;
   }).reverse().join('');
   openSheet(`
-    <div class="sheet-title">Ver resumo de qual mês?</div>
+    <div class="sheet-title">${ACTIVE_TAB === 'lancar' ? 'Editar qual mês?' : 'Ver resumo de qual mês?'}</div>
     <div class="mp-list">${items}</div>
     <button class="btn btn-ghost sheet-action" id="sheet-cancelar">Cancelar</button>
   `);
@@ -202,7 +204,7 @@ function openMonthPickerSheet() {
     INICIO_MONTH_KEY = el.dataset.mk;
     ACTIVE_MONTH_KEY = el.dataset.mk;
     closeSheet();
-    renderInicio();
+    renderAll();
   }));
 }
 
@@ -486,16 +488,12 @@ function renderLancar() {
   const c = computeMonth(STATE.months, idx, STATE.params, loansTotal);
   const proj = m.regime === 'ME' ? projectNextMonth(STATE.months, idx, STATE.params) : null;
 
-  setTopbar('Mês', monthLabelExt(m.key));
-
-  const options = STATE.months.map(mm => `<option value="${mm.key}" ${mm.key === m.key ? 'selected' : ''}>${monthLabel(mm.key)} ${mm.regime === 'MEI' ? '(MEI)' : ''}</option>`).join('');
+  setTopbar('Mês', monthLabelExt(m.key), `
+    <button class="icon-btn" id="btn-pick-month" aria-label="Escolher mês">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+    </button>`);
 
   document.getElementById('content').innerHTML = `
-    <h2 class="section-title">Selecionar mês</h2>
-    <div class="card tight">
-      <select id="sel-month">${options}</select>
-    </div>
-
     <h2 class="section-title">Regime</h2>
     <div class="card tight">
       <div class="seg">
@@ -572,7 +570,7 @@ function renderLancar() {
     </div>
   `;
 
-  document.getElementById('sel-month').addEventListener('change', e => { ACTIVE_MONTH_KEY = e.target.value; INICIO_MONTH_KEY = e.target.value; renderLancar(); });
+  document.getElementById('btn-pick-month').addEventListener('click', openMonthPickerSheet);
   document.querySelectorAll('[data-regime]').forEach(b => b.addEventListener('click', () => {
     m.regime = b.dataset.regime;
     if (m.regime === 'MEI') m.proLabore = 0;
