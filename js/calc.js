@@ -147,6 +147,16 @@ function nextKey(key) {
   m += 1; if (m > 12) { m = 1; y += 1; }
   return y + '-' + String(m).padStart(2, '0');
 }
+function prevKey(key) {
+  let [y, m] = key.split('-').map(Number);
+  m -= 1; if (m < 1) { m = 12; y -= 1; }
+  return y + '-' + String(m).padStart(2, '0');
+}
+/* Ordena os meses por data. O motor de cálculo agora usa as chaves AAAA-MM,
+   mas a UI (gráfico, sparkline, "último mês") ainda lê o array em ordem. */
+function sortMonths(months) {
+  return months.sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
 
 function bracketLookup(table, rbt12) {
   let row = table[0];
@@ -158,33 +168,50 @@ function despesasTotal(month) {
   return (month.despesas || []).reduce((s, d) => s + (Number(d.valor) || 0), 0);
 }
 
-/* ---------- empréstimos ---------- */
-function loansTotalAtivo(loans, monthKey) {
-  return loans.filter(l => {
-    if (monthKey && l.mesInicio && monthKey !== 'sim' && monthKey < l.mesInicio) return false;
-    return (l.parcelasPagas || 0) < (l.nParcelas || 0);
-  }).reduce((s, l) => s + (Number(l.valorParcela) || 0), 0);
+/* ---------- janela de 12 meses (por CALENDÁRIO, não por posição no array) ----------
+   Antes a janela era "as 12 posições anteriores no array de meses". Isso só
+   funciona enquanto os meses estão todos lançados e em sequência: bastava
+   apagar um mês do meio (ou restaurar um backup fora de ordem) pra janela
+   passar a varrer 13, 14 meses de calendário sem ninguém perceber.
+   Agora a janela é montada a partir das CHAVES de mês (AAAA-MM), então um mês
+   ausente conta como zero e a largura da janela é sempre 12 meses de verdade. */
+function janelaSoma(months, endKey, n, inclusivo) {
+  const byKey = {};
+  months.forEach(mm => { byKey[mm.key] = mm; });
+  const primeiroKey = months.reduce((a, mm) => (mm.key < a ? mm.key : a), months[0].key);
+  const keys = [];
+  let k = inclusivo ? endKey : prevKey(endKey);
+  for (let i = 0; i < n; i++) {
+    if (k < primeiroKey) break; // antes do primeiro mês lançado a empresa não existia
+    keys.unshift(k);
+    k = prevKey(k);
+  }
+  let sf = 0, sp = 0;
+  keys.forEach(kk => {
+    const mm = byKey[kk];
+    if (!mm) return; // mês de calendário sem lançamento = zero faturamento e zero pró-labore
+    sf += Number(mm.faturamento) || 0;
+    sp += Number(mm.proLabore) || 0;
+  });
+  return { sf, sp, keys, meses: keys.length };
 }
 
-/* ---------- janela de 12 meses ANTERIORES ao mês idx ----------
-   Esta é a regra oficial do PGDAS-D: o Fator R e a faixa de alíquota de UM MÊS
+/* Esta é a regra oficial do PGDAS-D: o Fator R e a faixa de alíquota de UM MÊS
    usam o RBT12/folha12 acumulados nos 12 meses ANTERIORES a ele (sem contar o
    próprio mês). Por isso o resultado deste mês é definido pelo que já aconteceu
    antes — e o que você lança HOJE só vai pesar no enquadramento do MÊS QUE VEM. */
-function computeMonth(months, idx, params, loansTotal) {
+function computeMonth(months, idx, params) {
   const m = months[idx];
-  const preceding = idx;
+  const j = janelaSoma(months, m.key, 12, false);
   let rbt12, folha12;
-  if (preceding === 0) {
+  if (j.meses === 0) {
+    // primeiro mês de atividade: LC 123/2006 art. 18 §2º — receita do próprio mês x12
     rbt12 = m.faturamento * 12; folha12 = m.proLabore * 12;
-  } else if (preceding <= 11) {
-    let sf = 0, sp = 0;
-    for (let i = 0; i < idx; i++) { sf += months[i].faturamento; sp += months[i].proLabore; }
-    rbt12 = (sf / preceding) * 12; folha12 = (sp / preceding) * 12;
+  } else if (j.meses < 12) {
+    // início de atividade (§3º): média dos meses anteriores, anualizada
+    rbt12 = (j.sf / j.meses) * 12; folha12 = (j.sp / j.meses) * 12;
   } else {
-    let sf = 0, sp = 0;
-    for (let i = idx - 12; i < idx; i++) { sf += months[i].faturamento; sp += months[i].proLabore; }
-    rbt12 = sf; folha12 = sp;
+    rbt12 = j.sf; folha12 = j.sp;
   }
   const fatorR = rbt12 ? folha12 / rbt12 : 0;
   const anexo = fatorR >= params.fatorRMeta - 1e-9 ? 'III' : 'V';
@@ -200,7 +227,7 @@ function computeMonth(months, idx, params, loansTotal) {
   const dasUsado = m.regime === 'MEI' ? (m.dasPago ?? params.dasMei) : (m.dasPago ?? dasEstimado);
   const inss = m.regime === 'ME' ? Math.min(m.proLabore, params.tetoInss) * params.aliqInss : 0;
   const despesasMes = despesasTotal(m);
-  const totalSaida = m.proLabore + dasUsado + inss + loansTotal + despesasMes;
+  const totalSaida = m.proLabore + dasUsado + inss + despesasMes;
   const lucroDisponivel = m.faturamento - totalSaida;
   const lucroDistribuido = (m.lucroDistribuidoOverride != null) ? m.lucroDistribuidoOverride : Math.max(lucroDisponivel, 0);
   const saldoCaixa = lucroDisponivel - lucroDistribuido;
@@ -208,32 +235,28 @@ function computeMonth(months, idx, params, loansTotal) {
   return {
     rbt12, folha12, fatorR, anexo, aliqNom, pd, aliqEf, dasEstimado, dasUsado, inss,
     despesasMes, totalSaida, lucroDisponivel, lucroDistribuido, saldoCaixa,
+    /* auditoria da janela — é o que a tela usa pra mostrar "de onde saiu esse %" */
+    janelaKeys: j.keys, janelaMeses: j.meses, janelaSf: j.sf, janelaSp: j.sp,
   };
 }
 
 function computeAll(state) {
-  return state.months.map((m, idx) => {
-    const loansTotal = loansTotalAtivo(state.loans, m.key);
-    return computeMonth(state.months, idx, state.params, loansTotal);
-  });
+  return state.months.map((m, idx) => computeMonth(state.months, idx, state.params));
 }
 
 /* ---------- projeção para o MÊS QUE VEM ----------
-   Aqui SIM o mês atual (idx) entra na conta — porque é ele que vai compor a
-   janela de 12 meses usada para decidir o Anexo do mês seguinte.
+   Aqui SIM o mês atual entra na conta — porque é ele que vai compor a janela de
+   12 meses usada para decidir o Anexo do mês seguinte.
    fatorR = soma(pró-labore) / soma(faturamento) na janela — o fator de
    anualização sempre se cancela nessa razão, então nem precisamos dele aqui.
    A partir disso, isolamos o pró-labore mínimo que falta lançar ESTE mês para
-   a janela bater 28% e o próximo mês continuar (ou voltar a) Anexo III. */
+   a janela bater a meta e o próximo mês continuar (ou voltar a) Anexo III. */
 function projectNextMonth(months, idx, params) {
-  const windowSize = Math.min(idx + 1, 12);
-  const startIdx = Math.max(0, idx - windowSize + 1);
-  let sf = 0, sp = 0, spOutros = 0;
-  for (let i = startIdx; i <= idx; i++) {
-    sf += months[i].faturamento;
-    sp += months[i].proLabore;
-    if (i !== idx) spOutros += months[i].proLabore;
-  }
+  const m = months[idx];
+  const j = janelaSoma(months, m.key, 12, true);
+  const sf = j.sf, sp = j.sp;
+  const proLaboreMes = Number(m.proLabore) || 0;
+  const spOutros = sp - proLaboreMes;
   const fatorR = sf ? sp / sf : 0;
   const anexoProjetado = fatorR >= params.fatorRMeta - 1e-9 ? 'III' : 'V';
   const proLaboreMinimo = Math.max(0, params.fatorRMeta * sf - spOutros);
@@ -243,9 +266,11 @@ function projectNextMonth(months, idx, params) {
      excedenteMes  = quanto do pró-labore DESTE mês está acima do mínimo — é o
      máximo que daria pra converter em lucro distribuído sem perder a meta.
      (Matematicamente = min(folga, proLaboreMes), já que o mínimo é clampado em 0.) */
-  const proLaboreMes = months[idx].proLabore;
   const excedenteMes = Math.max(0, proLaboreMes - proLaboreMinimo);
-  return { sf, sp, fatorR, anexoProjetado, proLaboreMinimo, folga, windowSize, proLaboreMes, excedenteMes };
+  return {
+    sf, sp, fatorR, anexoProjetado, proLaboreMinimo, folga,
+    windowSize: j.meses, janelaKeys: j.keys, proLaboreMes, excedenteMes,
+  };
 }
 
 /* ---------- gauge SVG (semicírculo do Fator R) ---------- */
@@ -281,8 +306,7 @@ function buildYearCSV(state, year) {
   const lines = [header.join(';')];
   idxs.forEach(i => {
     const m = state.months[i];
-    const loansTotal = loansTotalAtivo(state.loans, m.key);
-    const c = computeMonth(state.months, i, state.params, loansTotal);
+    const c = computeMonth(state.months, i, state.params);
     const row = [
       monthLabelExt(m.key),
       m.regime,

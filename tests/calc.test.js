@@ -62,7 +62,7 @@ test('bracketLookup pega a faixa certa do Anexo III', () => {
 test('Fator R do mês usa só os 12 meses ANTERIORES (sem contar o próprio mês)', () => {
   const computeMonth = get('computeMonth');
   const idx = months.length - 1; // 2026-05
-  const c = computeMonth(months, idx, params, 0);
+  const c = computeMonth(months, idx, params);
   // janela: jun/25..abr/26 (12 meses antes de maio/26)
   assert.ok(c.fatorR > 0.27 && c.fatorR < 0.29, `fatorR fora do esperado: ${c.fatorR}`);
   assert.strictEqual(c.anexo, 'III');
@@ -97,15 +97,15 @@ test('despesasTotal soma corretamente os itens lançados', () => {
 
 test('MEI usa o DAS-MEI fixo, não a tabela de Anexo III/V', () => {
   const computeMonth = get('computeMonth');
-  const c = computeMonth(months, 1, params, 0); // 2025-06, MEI
+  const c = computeMonth(months, 1, params); // 2025-06, MEI
   assert.strictEqual(c.dasUsado, params.dasMei);
 });
 
-test('honorários contábeis não entram mais automaticamente no total de saídas', () => {
+test('total de saídas = pró-labore + DAS + INSS + despesas (sem contador fixo nem empréstimo)', () => {
   const computeMonth = get('computeMonth');
   const idx = months.length - 1;
-  const c = computeMonth(months, idx, params, 0);
-  const esperado = months[idx].proLabore + c.dasUsado + c.inss + 0 /* loansTotal */ + c.despesasMes;
+  const c = computeMonth(months, idx, params);
+  const esperado = months[idx].proLabore + c.dasUsado + c.inss + c.despesasMes;
   assert.ok(Math.abs(c.totalSaida - esperado) < 0.001, `totalSaida não bate sem contador fixo: ${c.totalSaida} vs ${esperado}`);
 });
 
@@ -120,7 +120,7 @@ test('parseBRNumber entende vírgula, ponto e formato BR completo', () => {
 
 test('buildYearCSV gera uma linha por mês do ano pedido', () => {
   const buildYearCSV = get('buildYearCSV');
-  const csv = buildYearCSV({ months, params, loans: [] }, '2026');
+  const csv = buildYearCSV({ months, params }, '2026');
   const linhas = csv.trim().split('\n');
   // 1 cabeçalho + 5 meses de 2026 no fixture (jan a mai)
   assert.strictEqual(linhas.length, 1 + 5);
@@ -169,6 +169,78 @@ test('numToInputMoney formata dinheiro com 2 decimais no padrão BR', () => {
   assert.strictEqual(numToInputMoneyBlankZero(0), '');
   // ida e volta sem perda: o que o campo mostra, parseBRNumber lê de volta
   assert.strictEqual(parseBRNumber(numToInputMoney(8475.55)), 8475.55);
+});
+
+test('a janela de 12 meses segue o CALENDÁRIO, não a posição no array', () => {
+  const computeMonth = get('computeMonth');
+  const mkMonth = get('mkMonth');
+  // 14 meses contíguos a partir de 2025-12: para o último (2027-01) a janela
+  // tem que ser 2026-01..2026-12
+  const seq = [];
+  for (let ano = 2025, mes = 12, i = 0; i < 14; i++) {
+    seq.push(mkMonth(ano + '-' + String(mes).padStart(2, '0'), 'ME', 10000, 3000));
+    mes++; if (mes > 12) { mes = 1; ano++; }
+  }
+  const c = computeMonth(seq, seq.length - 1, params);
+  assert.strictEqual(c.janelaMeses, 12);
+  assert.strictEqual(c.janelaKeys[0], '2026-01');
+  assert.strictEqual(c.janelaKeys[11], '2026-12');
+});
+
+test('mês apagado no meio não desloca a janela (antes ela esticava pra 13 meses)', () => {
+  const computeMonth = get('computeMonth');
+  const mkMonth = get('mkMonth');
+  const cheio = [];
+  for (let ano = 2025, mes = 1, i = 0; i < 13; i++) {
+    cheio.push(mkMonth(ano + '-' + String(mes).padStart(2, '0'), 'ME', 10000, 3000));
+    mes++; if (mes > 12) { mes = 1; ano++; }
+  }
+  // apaga 2025-06: a janela de 2026-01 continua sendo 2025-01..2025-12, com
+  // junho valendo zero — e não estica até 2024-12 pra "completar" 12 posições.
+  const comBuraco = cheio.filter(m => m.key !== '2025-06');
+  const c = computeMonth(comBuraco, comBuraco.length - 1, params);
+  assert.strictEqual(c.janelaKeys[0], '2025-01');
+  assert.strictEqual(c.janelaKeys.length, 12);
+  assert.strictEqual(c.janelaSf, 11 * 10000, 'o mês ausente soma zero, não puxa outro mês pra dentro');
+  assert.strictEqual(c.janelaSp, 11 * 3000);
+});
+
+test('meses fora de ordem no array não bagunçam o cálculo', () => {
+  const computeMonth = get('computeMonth');
+  const sortMonths = get('sortMonths');
+  const ordenado = sortMonths(JSON.parse(JSON.stringify(months)));
+  const embaralhado = JSON.parse(JSON.stringify(months));
+  [embaralhado[3], embaralhado[7]] = [embaralhado[7], embaralhado[3]];
+  const a = computeMonth(ordenado, ordenado.findIndex(m => m.key === '2026-05'), params);
+  const b = computeMonth(embaralhado, embaralhado.findIndex(m => m.key === '2026-05'), params);
+  assert.ok(Math.abs(a.fatorR - b.fatorR) < 1e-12, `fatorR mudou com o array fora de ordem: ${a.fatorR} vs ${b.fatorR}`);
+});
+
+test('pró-labore zero é valor válido: não muda o Fator R oficial do mês, muda a projeção', () => {
+  const computeMonth = get('computeMonth');
+  const projectNextMonth = get('projectNextMonth');
+  const idx = months.length - 1;
+  const copy = JSON.parse(JSON.stringify(months));
+  copy[idx].proLabore = 0;
+  const zerado = computeMonth(copy, idx, params);
+  const orig = computeMonth(months, idx, params);
+  assert.ok(Math.abs(zerado.fatorR - orig.fatorR) < 1e-12, 'o pró-labore do próprio mês não entra no Fator R oficial dele');
+  assert.ok(projectNextMonth(copy, idx, params).fatorR < projectNextMonth(months, idx, params).fatorR,
+    'zerar o pró-labore do mês tem que derrubar a projeção do mês seguinte');
+});
+
+test('prevKey é o inverso de nextKey e vira o ano certo', () => {
+  const prevKey = get('prevKey'), nextKey = get('nextKey');
+  assert.strictEqual(prevKey('2026-01'), '2025-12');
+  assert.strictEqual(nextKey('2025-12'), '2026-01');
+  assert.strictEqual(prevKey(nextKey('2026-07')), '2026-07');
+});
+
+test('computeMonth expõe a janela para auditoria na tela', () => {
+  const computeMonth = get('computeMonth');
+  const c = computeMonth(months, months.length - 1, params);
+  assert.ok(Array.isArray(c.janelaKeys) && c.janelaKeys.length === c.janelaMeses);
+  assert.ok(Math.abs(c.janelaSp / c.janelaSf - c.fatorR) < 1e-12, 'a razão da janela tem que bater com o Fator R mostrado');
 });
 
 console.log(`\n${passed} teste(s) passaram.`);

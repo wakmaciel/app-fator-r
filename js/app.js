@@ -126,6 +126,7 @@ function criarNovoMes() {
     ACTIVE_MONTH_KEY = nk;
   } else {
     STATE.months.push(mkMonth(nk, last.regime, 0, 0));
+    sortMonths(STATE.months);
     ACTIVE_MONTH_KEY = nk;
     persist();
   }
@@ -238,7 +239,7 @@ function renderInicio() {
     <div class="card hero">
       <div class="hero-grid">
         <div class="hero-left">
-          <div class="hero-label">Fator R</div>
+          <div class="hero-label">Fator R oficial</div>
           <div class="hero-value">${fmtPct(selC.fatorR)}</div>
           <span class="badge ${selC.anexo === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${selC.anexo}</span>
         </div>
@@ -247,11 +248,72 @@ function renderInicio() {
           <div class="hero-status ${dentro ? 'ok' : 'bad'}">${dentro ? 'Dentro da meta ✅' : 'Abaixo da meta ⚠️'}</div>
         </div>
       </div>
+      <div class="hero-next">
+        <div class="l">Formando agora<span>vale para ${monthLabel(nextKey(sel.key))}</span></div>
+        <div class="r">
+          <span class="v ${proj.anexoProjetado === 'III' ? 'ok' : 'bad'}">${fmtPct(proj.fatorR)}</span>
+          <span class="badge ${proj.anexoProjetado === 'III' ? 'badge-iii' : 'badge-v'}">Anexo ${proj.anexoProjetado}</span>
+        </div>
+      </div>
     </div>` : `
     <div class="card hero" style="text-align:center;">
       <div class="hero-label">Fator R</div>
       <div style="padding:14px 0 4px;"><span class="badge badge-mei">MEI — sem Fator R</span></div>
     </div>`;
+
+  /* ---------- auditoria da janela de 12 meses ----------
+     A dúvida mais comum é "por que o Fator R quase não se move quando eu
+     lanço o mês?". A resposta é a regra do PGDAS-D: o número deste mês vem
+     dos 12 meses ANTERIORES. Este card abre a janela inteira, mês a mês, pra
+     dar pra conferir de onde saiu cada real da conta. */
+  const janelaHTML = isME ? (() => {
+    const byKey = {};
+    STATE.months.forEach(mm => { byKey[mm.key] = mm; });
+    const keys = selC.janelaKeys || [];
+    const periodo = keys.length ? `${monthLabel(keys[0])} a ${monthLabel(keys[keys.length - 1])}` : '—';
+    const linhas = keys.map(k => {
+      const mm = byKey[k];
+      const f = mm ? mm.faturamento : 0;
+      const pl = mm ? mm.proLabore : 0;
+      return `<tr>
+        <td>${monthLabel(k)}${mm ? '' : ' *'}</td>
+        <td>${fmtBRL(f)}</td>
+        <td class="${pl === 0 ? 'audit-zero' : ''}">${fmtBRL(pl)}</td>
+      </tr>`;
+    }).join('');
+    const faltando = keys.some(k => !byKey[k]);
+    const parcial = keys.length > 0 && keys.length < 12;
+    return `
+    <div class="card">
+      <details class="audit">
+        <summary>De onde saíram esses ${fmtPct(selC.fatorR)}</summary>
+        <div class="audit-body">
+          ${keys.length ? `
+            <div class="row"><div class="l">Janela usada (12 meses anteriores)</div><div class="v dim">${periodo}</div></div>
+            <div class="row"><div class="l">Faturamento somado na janela</div><div class="v dim">${fmtBRL(selC.janelaSf)}</div></div>
+            <div class="row"><div class="l">Pró-labore somado na janela</div><div class="v dim">${fmtBRL(selC.janelaSp)}</div></div>
+          ` : `
+            <div class="row"><div class="l">Meses anteriores lançados</div><div class="v dim">nenhum</div></div>
+            <div class="row"><div class="l">Faturamento do próprio mês</div><div class="v dim">${fmtBRL(sel.faturamento)}</div></div>
+            <div class="row"><div class="l">Pró-labore do próprio mês</div><div class="v dim">${fmtBRL(sel.proLabore)}</div></div>
+          `}
+          <div class="divider"></div>
+          <div class="row big"><div class="l">Fator R = pró-labore ÷ faturamento</div><div class="v">${fmtPct(selC.fatorR)}</div></div>
+          <div class="row"><div class="l">RBT12 usado p/ achar a faixa da tabela</div><div class="v dim">${fmtBRL(selC.rbt12)}</div></div>
+          ${keys.length ? `<table class="audit-tbl">
+            <thead><tr><th>Mês</th><th>Faturamento</th><th>Pró-labore</th></tr></thead>
+            <tbody>${linhas}</tbody>
+            <tfoot><tr><td>Total</td><td>${fmtBRL(selC.janelaSf)}</td><td>${fmtBRL(selC.janelaSp)}</td></tr></tfoot>
+          </table>` : ''}
+          ${faltando ? `<div class="note">* mês sem lançamento — entra na janela como R$ 0,00.</div>` : ''}
+          ${parcial ? `<div class="note">Só ${keys.length} ${keys.length === 1 ? 'mês lançado' : 'meses lançados'} antes de ${monthLabel(sel.key)}: pela regra de início de atividade (LC 123/2006, art. 18 §3º), o RBT12 acima é a média desses meses anualizada. O Fator R em si não muda com isso — a anualização se cancela na divisão.</div>` : ''}
+          ${keys.length
+            ? `<div class="note"><strong>${monthLabel(sel.key)} não entra nesta conta.</strong> É assim no PGDAS-D: o Fator R de um mês é decidido pelos 12 meses anteriores a ele. Por isso o número acima quase não se mexe quando você lança o mês — o que você digita hoje aparece no <strong>Formando agora</strong> e vale para ${monthLabel(nextKey(sel.key))}.</div>`
+            : `<div class="note"><strong>Primeiro mês lançado.</strong> Sem meses anteriores, a regra de início de atividade (art. 18 §2º) manda usar o faturamento e o pró-labore do próprio mês × 12. A partir de ${monthLabel(nextKey(sel.key))} o Fator R passa a olhar só para os meses anteriores.</div>`}
+        </div>
+      </details>
+    </div>` ;
+  })() : '';
 
   /* ---------- KPIs do mês, com o total do ano / mínimo como contexto ---------- */
   const N = Math.min(12, selIdx + 1);
@@ -369,6 +431,7 @@ function renderInicio() {
 
   document.getElementById('content').innerHTML = `
     ${heroHTML}
+    ${janelaHTML}
     ${kpisHTML}
 
     <div class="card">
@@ -484,8 +547,7 @@ function renderLancar() {
   ensureActiveMonth();
   const idx = STATE.months.findIndex(m => m.key === ACTIVE_MONTH_KEY);
   const m = STATE.months[idx];
-  const loansTotal = loansTotalAtivo(STATE.loans, m.key);
-  const c = computeMonth(STATE.months, idx, STATE.params, loansTotal);
+  const c = computeMonth(STATE.months, idx, STATE.params);
   const proj = m.regime === 'ME' ? projectNextMonth(STATE.months, idx, STATE.params) : null;
 
   setTopbar('Mês', monthLabelExt(m.key), `
@@ -512,10 +574,11 @@ function renderLancar() {
       ${m.regime === 'ME' ? `
         <div class="field">
           <label>Pró-labore retirado</label>
-          <input type="text" inputmode="decimal" id="f-pl" value="${numToInputMoneyBlankZero(m.proLabore)}" placeholder="20,00">
+          <input type="text" inputmode="decimal" id="f-pl" value="${numToInputMoney(m.proLabore)}" placeholder="0,00">
           <div class="hint ${proj && proj.folga < -0.005 ? 'hint-danger' : 'hint-ok'}">
             ${proj ? `Mínimo p/ manter Anexo III no mês que vem: <strong>${fmtBRL(proj.proLaboreMinimo)}</strong>${proj.folga < -0.005 ? ` — faltam <strong>${fmtBRL(-proj.folga)}</strong>` : ''}` : ''}
           </div>
+          ${m.proLabore === 0 ? '<div class="hint hint-ok">Mês sem retirada — gravado como <strong>R$ 0,00</strong> e contando assim na folha de 12 meses.</div>' : ''}
         </div>
         <div class="field">
           <label>DAS informado pelo contador (em branco = usar estimativa)</label>
@@ -544,7 +607,6 @@ function renderLancar() {
       ` : `
         <div class="row"><div class="l">DAS-MEI usado</div><div class="v">${fmtBRL(c.dasUsado)}</div></div>
       `}
-      <div class="row"><div class="l">Parcela(s) de empréstimo</div><div class="v dim">${fmtBRL(loansTotal)}</div></div>
       <div class="row"><div class="l">Despesas</div><div class="v dim">${fmtBRL(c.despesasMes)}</div></div>
       <div class="divider"></div>
       <div class="row big"><div class="l">Total de saídas</div><div class="v">${fmtBRL(c.totalSaida)}</div></div>
@@ -620,8 +682,9 @@ function renderHistorico() {
     return `<div class="month-list-item" data-key="${m.key}">
       <div>
         <div class="mk">${monthLabel(m.key)}</div>
-        <div class="mv">${fmtBRL(m.faturamento)}</div>
-        ${c.despesasMes ? `<div class="mv dim-small">Despesas: ${fmtBRL(c.despesasMes)}</div>` : ''}
+        <div class="mv">Faturamento: ${fmtBRL(m.faturamento)}</div>
+        ${m.regime === 'ME' ? `<div class="mv dim-small ${m.proLabore === 0 ? 'zero' : ''}">Pró-labore: ${fmtBRL(m.proLabore)}</div>` : ''}
+        <div class="mv dim-small">Despesas: ${fmtBRL(c.despesasMes)}</div>
       </div>
       <div class="right">
         ${badge}
@@ -649,7 +712,7 @@ function driveCardHTML() {
   const last = st.lastBackup ? new Date(st.lastBackup).toLocaleString('pt-BR') : null;
   if (!st.enabled) {
     return `
-      <div class="note" style="margin-top:0;">Conecte sua conta Google e o app salva automaticamente um arquivo <strong>fator-r-backup.json</strong> no seu Drive alguns segundos depois de cada alteração — meses, despesas, empréstimos e parâmetros.</div>
+      <div class="note" style="margin-top:0;">Conecte sua conta Google e o app salva automaticamente um arquivo <strong>fator-r-backup.json</strong> no seu Drive alguns segundos depois de cada alteração — meses, despesas e parâmetros.</div>
       <button class="btn btn-primary" id="btn-drive-on">Conectar ao Google Drive</button>
     `;
   }
@@ -694,8 +757,9 @@ function wireDriveCard() {
       const parsed = await driveRestore();
       if (!Array.isArray(parsed.months) || !parsed.params) throw new Error('O arquivo no Drive não parece um backup válido do Fator R.');
       parsed.months.forEach(m => { if (!Array.isArray(m.despesas)) m.despesas = []; });
-      if (!Array.isArray(parsed.loans)) parsed.loans = [];
+      delete parsed.loans;
       if (!parsed.empresa) parsed.empresa = { nome: '' };
+      sortMonths(parsed.months);
       STATE = parsed;
       ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
       saveState(STATE);
@@ -748,28 +812,6 @@ function renderAjustes() {
       <div class="note" style="margin-top:0;">Honorários contábeis não são mais um valor fixo aqui — lance-os como despesa (categoria "Contabilidade") sempre que pagar, assim o valor acompanha quando o preço do seu contador mudar.</div>
     </div>
 
-    <h2 class="section-title">Empréstimos</h2>
-    <div id="loans-list">
-      ${STATE.loans.map(l => {
-        const restantes = Math.max((l.nParcelas || 0) - (l.parcelasPagas || 0), 0);
-        const saldo = restantes * (l.valorParcela || 0);
-        return `<div class="loan-card" data-id="${l.id}">
-          <div class="top"><span class="name">${esc(l.nome) || 'Empréstimo'}</span><button class="x-btn" data-del="${l.id}">✕</button></div>
-          <div class="field"><label>Nome</label><input type="text" data-loan="${l.id}" data-field="nome" value="${esc(l.nome)}"></div>
-          <div class="two-col">
-            <div class="field"><label>Nº parcelas</label><input type="number" step="1" data-loan="${l.id}" data-field="nParcelas" value="${l.nParcelas || 0}"></div>
-            <div class="field"><label>Valor da parcela</label><input type="text" inputmode="decimal" data-loan="${l.id}" data-field="valorParcela" value="${numToInputMoneyBlankZero(l.valorParcela)}" placeholder="20,00"></div>
-          </div>
-          <div class="two-col">
-            <div class="field"><label>Parcelas pagas</label><input type="number" step="1" data-loan="${l.id}" data-field="parcelasPagas" value="${l.parcelasPagas || 0}"></div>
-            <div class="field"><label>Mês de início</label><input type="month" data-loan="${l.id}" data-field="mesInicio" value="${l.mesInicio || ''}"></div>
-          </div>
-          <div class="row"><div class="l">Saldo devedor estimado</div><div class="v dim">${fmtBRL(saldo)} (${restantes} restantes)</div></div>
-        </div>`;
-      }).join('') || '<div class="card empty">Nenhum empréstimo cadastrado.</div>'}
-    </div>
-    <button class="btn btn-ghost" id="btn-add-loan">+ Adicionar empréstimo</button>
-
     <h2 class="section-title">Fechamento anual</h2>
     <div class="card">
       <div class="note" style="margin-top:0;">Exporte uma planilha (.csv) com todos os meses de um ano — faturamento, pró-labore, DAS, INSS, despesas, lucro e Fator R já calculados. Boa pra guardar no fim do ano ou mandar pro contador.</div>
@@ -794,7 +836,7 @@ function renderAjustes() {
     <h2 class="section-title">Zona de risco</h2>
     <div class="card">
       <button class="btn btn-danger" id="btn-clear">Apagar todos os dados</button>
-      <div class="note">Remove todos os meses, despesas e empréstimos lançados e recomeça do zero. Não pode ser desfeito — exporte um backup antes, se quiser guardar algo.</div>
+      <div class="note">Remove todos os meses e despesas lançados e recomeça do zero. Não pode ser desfeito — exporte um backup antes, se quiser guardar algo.</div>
     </div>
   `;
 
@@ -835,23 +877,6 @@ function renderAjustes() {
     p.atividadeMei = e.target.value;
     const v = DAS_MEI_POR_ATIVIDADE[e.target.value];
     if (v) p.dasMei = v;
-    persist(); renderAjustes();
-  });
-
-  document.querySelectorAll('[data-loan]').forEach(el => el.addEventListener('change', () => {
-    const loan = STATE.loans.find(l => l.id === el.dataset.loan);
-    const f = el.dataset.field;
-    if (f === 'nome' || f === 'mesInicio') loan[f] = el.value;
-    else if (f === 'nParcelas' || f === 'parcelasPagas') loan[f] = parseInt(el.value, 10) || 0;
-    else { loan[f] = parseBRNumber(el.value) || 0; el.value = numToInputMoneyBlankZero(loan[f]); }
-    persist();
-  }));
-  document.querySelectorAll('[data-del]').forEach(el => el.addEventListener('click', () => {
-    STATE.loans = STATE.loans.filter(l => l.id !== el.dataset.del);
-    persist(); renderAjustes();
-  }));
-  document.getElementById('btn-add-loan').addEventListener('click', () => {
-    STATE.loans.push({ id: 'l' + Date.now(), nome: 'Novo empréstimo', valorContratado: 0, nParcelas: 1, valorParcela: 0, parcelasPagas: 0, mesInicio: '' });
     persist(); renderAjustes();
   });
 

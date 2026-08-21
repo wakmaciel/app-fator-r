@@ -20,7 +20,6 @@ function defaultState() {
     months: [
       mkMonth(currentMonthKey(), 'ME', 0, 0),
     ],
-    loans: [],
   };
 }
 
@@ -41,7 +40,10 @@ function loadState() {
         delete m.outrasDespesas;
       }
     });
-    if (!Array.isArray(parsed.loans)) parsed.loans = [];
+    // empréstimos saíram do app (lançados manualmente não se pagavam:
+    // as parcelas já vêm do app de despesas via Open Finance)
+    delete parsed.loans;
+    sortMonths(parsed.months || []);
     return parsed;
   } catch (e) {
     console.error('Falha ao carregar dados salvos, usando padrão.', e);
@@ -92,8 +94,9 @@ function importBackup(file, onDone, onError) {
       const parsed = JSON.parse(reader.result);
       if (!Array.isArray(parsed.months) || !parsed.params) throw new Error('Arquivo não parece um backup válido do Fator R.');
       parsed.months.forEach(m => { if (!Array.isArray(m.despesas)) m.despesas = []; });
-      if (!Array.isArray(parsed.loans)) parsed.loans = [];
+      delete parsed.loans;
       if (!parsed.empresa) parsed.empresa = { nome: '' };
+      sortMonths(parsed.months);
       onDone(parsed);
     } catch (e) {
       onError(e);

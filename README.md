@@ -22,8 +22,13 @@ navegador** (localStorage). Nada é enviado para nenhum servidor.
   e despesas do mês (com categorias e quebra visual), tudo na aba Mês — que
   também permite **excluir um mês** lançado por engano (Zona de risco, no
   fim da tela).
-- **Histórico** de todos os meses lançados, com o Anexo de cada um.
-- **Empréstimos**: parcelas, saldo devedor, mês de início.
+- **Histórico** de todos os meses lançados, com faturamento, pró-labore,
+  despesas, Fator R e o Anexo de cada um.
+- **Auditoria do Fator R**: na Home, o card "De onde saíram esses X%" abre a
+  janela de 12 meses usada no cálculo, mês a mês, para conferir de onde saiu
+  cada real. O Fator R **oficial** do mês (que define o DAS) vem sempre dos 12
+  meses *anteriores*; o que você lança hoje aparece em **Formando agora** e
+  vale para o mês seguinte.
 - **Fechamento anual em CSV**: exporta uma planilha com todos os meses de um
   ano (faturamento, pró-labore, DAS, INSS, despesas, lucro, Fator R) — ótimo
   para guardar no fim do ano ou mandar para o contador.

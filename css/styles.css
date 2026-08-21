@@ -436,24 +436,12 @@ select option { background: var(--select-option-bg); color: var(--text); }
 .month-list-item .mk { font-family: var(--font-display); font-size: 14.5px; font-weight: 700; }
 .month-list-item .mv { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); margin-top: 2px; }
 .month-list-item .mv.dim-small { font-size: 11px; color: var(--text-faint); }
+.month-list-item .mv.dim-small.zero { color: var(--warning); }
 .month-list-item .right { text-align: right; }
 
 .empty { text-align: center; padding: 40px 10px; color: var(--text-faint); font-size: 13.5px; }
 .note { font-size: 11.5px; color: var(--text-faint); line-height: 1.5; margin-top: 10px; }
 .divider { height: 1px; background: var(--hairline); margin: 14px 0; }
-
-.loan-card {
-  background: var(--glass-light);
-  backdrop-filter: var(--blur-soft);
-  -webkit-backdrop-filter: var(--blur-soft);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 14px;
-  margin-bottom: 10px;
-  box-shadow: 0 1px 0 var(--glass-highlight) inset;
-}
-.loan-card .top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.loan-card .top .name { font-weight: 700; font-size: 14px; }
 
 .x-btn { background: none; border: none; color: var(--text-faint); font-size: 18px; padding: 2px 6px; }
 .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -584,6 +572,36 @@ select option { background: var(--select-option-bg); color: var(--text); }
 .hero-status { font-size: 12.5px; font-weight: 700; margin-top: 2px; }
 .hero-status.ok { color: var(--success); }
 .hero-status.bad { color: var(--danger); }
+
+/* faixa "Formando agora": o Fator R que os lançamentos DESTE mês estão montando
+   e que vale só para o mês seguinte — separado do oficial, que já está travado */
+.hero-next {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hairline);
+}
+.hero-next .l { font-size: 11.5px; color: var(--text-dim); font-weight: 600; display: flex; flex-direction: column; }
+.hero-next .l span { font-size: 10.5px; color: var(--text-faint); font-weight: 500; text-transform: none; }
+.hero-next .r { display: flex; align-items: center; gap: 8px; }
+.hero-next .v { font-family: var(--font-mono); font-size: 17px; font-weight: 700; }
+.hero-next .v.ok { color: var(--success); }
+.hero-next .v.bad { color: var(--danger); }
+
+/* ---------- card de auditoria da janela de 12 meses ---------- */
+details.audit > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  font-size: 13.5px; font-weight: 600; color: var(--text-dim);
+}
+details.audit > summary::-webkit-details-marker { display: none; }
+details.audit > summary::after { content: '▾'; font-size: 11px; color: var(--text-faint); }
+details.audit[open] > summary::after { content: '▴'; }
+details.audit[open] > summary { color: var(--text); margin-bottom: 4px; }
+.audit-body > .row:first-child { padding-top: 10px; }
+.audit-tbl { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 11.5px; margin-top: 12px; }
+.audit-tbl th { text-align: right; color: var(--text-faint); font-weight: 600; padding: 5px 0; border-bottom: 1px solid var(--hairline); }
+.audit-tbl td { text-align: right; color: var(--text-dim); padding: 5px 0; border-bottom: 1px solid var(--hairline); }
+.audit-tbl th:first-child, .audit-tbl td:first-child { text-align: left; }
+.audit-tbl tfoot td { color: var(--text); font-weight: 700; border-bottom: none; }
+.audit-tbl td.audit-zero { color: var(--warning); }
 
 /* ---------- KPIs com ícone e sparkline ---------- */
 .kpi { min-width: 0; }
