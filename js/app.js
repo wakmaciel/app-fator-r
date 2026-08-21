@@ -569,7 +569,8 @@ function renderLancar() {
     <div class="card">
       <div class="field">
         <label>Faturamento do mês</label>
-        <input type="text" inputmode="decimal" id="f-fat" value="${numToInputMoneyBlankZero(m.faturamento)}" placeholder="20,00">
+        <input type="text" inputmode="decimal" id="f-fat" value="${numToInputMoney(m.faturamento)}" placeholder="0,00">
+        ${m.faturamento === 0 ? '<div class="hint hint-ok">Mês sem faturamento — gravado como <strong>R$ 0,00</strong> e contando assim no RBT12 dos próximos meses.</div>' : ''}
       </div>
       ${m.regime === 'ME' ? `
         <div class="field">
