@@ -685,7 +685,7 @@ function renderHistorico() {
         <div class="mk">${monthLabel(m.key)}</div>
         <div class="mv">Faturamento: ${fmtBRL(m.faturamento)}</div>
         ${m.regime === 'ME' ? `<div class="mv dim-small ${m.proLabore === 0 ? 'zero' : ''}">Pró-labore: ${fmtBRL(m.proLabore)}</div>` : ''}
-        <div class="mv dim-small">Despesas: ${fmtBRL(c.despesasMes)}</div>
+        <div class="mv dim-small ${c.lucroDisponivel < 0 ? 'neg' : ''}">Lucro: ${fmtBRL(c.lucroDisponivel)}</div>
       </div>
       <div class="right">
         ${badge}

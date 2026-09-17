@@ -152,12 +152,38 @@ button, a, input, select, textarea { touch-action: manipulation; }
   position: sticky;
   top: 0;
   z-index: 20;
-  padding: calc(env(safe-area-inset-top) + 14px) 18px 16px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 18px 16px;
   background: var(--glass);
   backdrop-filter: var(--blur);
   -webkit-backdrop-filter: var(--blur);
   border-bottom: 1px solid var(--glass-border);
   box-shadow: 0 1px 0 var(--glass-highlight) inset;
+}
+
+/* iOS 26+ (Liquid Glass): quando o app está instalado na tela inicial, o sistema
+   desenha um blur próprio por cima da faixa da barra de status e ele "vaza" uns
+   ~16px pra dentro da página, embaçando o que estiver logo abaixo. Não existe CSS
+   ou meta que desligue isso, então: (1) a faixa vira uma cor lisa (blur de cor lisa
+   é invisível) que se dissolve no vidro do topbar, e (2) o título desce pra fora
+   da zona de vazamento. Só vale no modo instalado — no Safari normal nada muda. */
+@media (display-mode: standalone) {
+  #topbar {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 30px);
+  }
+  #topbar::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: calc(env(safe-area-inset-top, 0px) + 34px);
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      var(--bg) 0,
+      var(--bg) calc(env(safe-area-inset-top, 0px) + 10px),
+      transparent 100%
+    );
+  }
+  .topbar-row { position: relative; }
 }
 
 .topbar-row {
@@ -437,6 +463,7 @@ select option { background: var(--select-option-bg); color: var(--text); }
 .month-list-item .mv { font-family: var(--font-mono); font-size: 13px; color: var(--text-dim); margin-top: 2px; }
 .month-list-item .mv.dim-small { font-size: 11px; color: var(--text-faint); }
 .month-list-item .mv.dim-small.zero { color: var(--warning); }
+.month-list-item .mv.dim-small.neg { color: var(--danger); }
 .month-list-item .right { text-align: right; }
 
 .empty { text-align: center; padding: 40px 10px; color: var(--text-faint); font-size: 13.5px; }
