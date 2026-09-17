@@ -163,27 +163,12 @@ button, a, input, select, textarea { touch-action: manipulation; }
 /* iOS 26+ (Liquid Glass): quando o app está instalado na tela inicial, o sistema
    desenha um blur próprio por cima da faixa da barra de status e ele "vaza" uns
    ~16px pra dentro da página, embaçando o que estiver logo abaixo. Não existe CSS
-   ou meta que desligue isso, então: (1) a faixa vira uma cor lisa (blur de cor lisa
-   é invisível) que se dissolve no vidro do topbar, e (2) o título desce pra fora
-   da zona de vazamento. Só vale no modo instalado — no Safari normal nada muda. */
+   ou meta que desligue isso, então o título desce pra fora da zona de vazamento
+   (o vidro transparente do topbar continua o mesmo). Só vale no modo instalado. */
 @media (display-mode: standalone) {
   #topbar {
     padding-top: calc(env(safe-area-inset-top, 0px) + 30px);
   }
-  #topbar::before {
-    content: '';
-    position: absolute;
-    left: 0; right: 0; top: 0;
-    height: calc(env(safe-area-inset-top, 0px) + 34px);
-    pointer-events: none;
-    background: linear-gradient(
-      to bottom,
-      var(--bg) 0,
-      var(--bg) calc(env(safe-area-inset-top, 0px) + 10px),
-      transparent 100%
-    );
-  }
-  .topbar-row { position: relative; }
 }
 
 .topbar-row {
