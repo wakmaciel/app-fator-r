@@ -243,4 +243,60 @@ test('computeMonth expõe a janela para auditoria na tela', () => {
   assert.ok(Math.abs(c.janelaSp / c.janelaSf - c.fatorR) < 1e-12, 'a razão da janela tem que bater com o Fator R mostrado');
 });
 
+/* Cenário da aba Projeção: fev e mar/26 com pró-labore alto, depois só o
+   salário mínimo. Quando fev/mar saem da janela (um ano depois), o "só o
+   mínimo" dá um salto; o nivelado não. */
+function mesesProjecao() {
+  const mkMonth = get('mkMonth');
+  const copy = JSON.parse(JSON.stringify(months));
+  copy.push(mkMonth('2026-06', 'ME', 10000, 1621), mkMonth('2026-07', 'ME', 11000, 1621),
+    mkMonth('2026-08', 'ME', 10500, 1621), mkMonth('2026-09', 'ME', 10000, 0));
+  return copy;
+}
+
+test('planoProLabore: mês base bate com o mínimo da Home (com piso de 1 salário mínimo)', () => {
+  const planoProLabore = get('planoProLabore'), projectNextMonth = get('projectNextMonth');
+  const ms = mesesProjecao();
+  const idx = ms.length - 1;
+  const p = planoProLabore(ms, idx, params, null);
+  const home = projectNextMonth(ms, idx, params);
+  assert.ok(Math.abs(p.linhas[0].minimo - Math.max(params.salarioMinimo, home.proLaboreMinimo)) < 0.01);
+});
+
+test('planoProLabore: nenhuma regra deixa o Fator R abaixo da meta nem o pró-labore abaixo do piso', () => {
+  const planoProLabore = get('planoProLabore');
+  const ms = mesesProjecao();
+  const p = planoProLabore(ms, ms.length - 1, params, null);
+  assert.strictEqual(p.linhas.length, 12);
+  p.linhas.forEach(l => {
+    assert.ok(l.fatorRMinimo >= params.fatorRMeta - 1e-9, `${l.key} (mínimo) ficou em ${l.fatorRMinimo}`);
+    assert.ok(l.fatorRNivelado >= params.fatorRMeta - 1e-9, `${l.key} (nivelado) ficou em ${l.fatorRNivelado}`);
+    assert.ok(l.minimo >= params.salarioMinimo - 1e-9 && l.nivelado >= params.salarioMinimo - 1e-9);
+  });
+});
+
+test('planoProLabore: pró-labore alto saindo da janela faz o mínimo saltar; o nivelado não', () => {
+  const planoProLabore = get('planoProLabore');
+  const ms = mesesProjecao();
+  const p = planoProLabore(ms, ms.length - 1, params, null);
+  const mar27 = p.linhas.find(l => l.key === '2027-03');
+  assert.strictEqual(mar27.sai.key, '2026-03');
+  assert.strictEqual(mar27.sai.proLabore, 9266);
+  assert.ok(mar27.minimo > 9266, `o salto deveria repor o mês que saiu, veio ${mar27.minimo}`);
+  assert.ok(p.picoNivelado < p.picoMinimo / 2, 'nivelar tem que tirar o pico');
+  assert.ok(p.nivel >= p.sustentavel - 0.01, 'o nível nunca fica abaixo de meta × faturamento esperado');
+  // o nível é o menor possível: algum mês depois do base fica exatamente na meta
+  assert.ok(p.linhas.slice(1).some(l => Math.abs(l.fatorRNivelado - params.fatorRMeta) < 0.0005),
+    'se nenhum mês encosta na meta, dava pra nivelar mais baixo');
+});
+
+test('planoProLabore: faturamento esperado maior pede nível maior', () => {
+  const planoProLabore = get('planoProLabore');
+  const ms = mesesProjecao();
+  const auto = planoProLabore(ms, ms.length - 1, params, null);
+  const alto = planoProLabore(ms, ms.length - 1, params, 15000);
+  assert.ok(!alto.fatAuto && alto.fatProj === 15000);
+  assert.ok(alto.nivel > auto.nivel);
+});
+
 console.log(`\n${passed} teste(s) passaram.`);

@@ -29,6 +29,14 @@ navegador** (localStorage). Nada é enviado para nenhum servidor.
   cada real. O Fator R **oficial** do mês (que define o DAS) vem sempre dos 12
   meses *anteriores*; o que você lança hoje aparece em **Formando agora** e
   vale para o mês seguinte.
+- **Projeção dos próximos 12 meses** (aba Projeção): o mínimo da Home só olha
+  o mês seguinte, mas a janela anda — todo mês entra um e sai o de 12 meses
+  atrás. Um mês com pró-labore alto segura o Fator R por um ano e, quando sai
+  da conta, o mínimo dá um salto quase do mesmo tamanho. A aba mostra, mês a
+  mês, qual mês está saindo, quanto seria o "só o mínimo" (com os saltos) e o
+  **pró-labore nivelado**: o menor valor fixo por mês que nunca deixa o Fator R
+  cair abaixo da meta. O faturamento dos meses futuros usa a média dos últimos
+  12 meses ou um valor que você digitar.
 - **Fechamento anual em CSV**: exporta uma planilha com todos os meses de um
   ano (faturamento, pró-labore, DAS, INSS, despesas, lucro, Fator R) — ótimo
   para guardar no fim do ano ou mandar para o contador.

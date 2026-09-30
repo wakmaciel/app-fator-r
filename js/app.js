@@ -36,6 +36,7 @@ function ensureInicioMonth() {
 const TABS = [
   { id: 'inicio', label: 'Início', icon: '<path d="M3 11l9-7 9 7"/><path d="M5 10v9a1 1 0 001 1h4v-6h4v6h4a1 1 0 001-1v-9"/>' },
   { id: 'lancar', label: 'Mês', icon: '<rect x="3" y="4" width="18" height="18" rx="3"/><path d="M16 2v4M8 2v4M3 10h18"/>' },
+  { id: 'projecao', label: 'Projeção', icon: '<path d="M3 17l6-6 4 4 8-8"/><path d="M15 7h6v6"/>' },
   { id: 'historico', label: 'Histórico', icon: '<path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/>' },
   { id: 'ajustes', label: 'Ajustes', icon: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/>' },
 ];
@@ -672,6 +673,171 @@ function renderLancar() {
   });
 }
 
+/* ============================== TAB: PROJEÇÃO ==============================
+   Responde "quanto tirar de pró-labore pra não levar susto no ano que vem".
+   O mínimo da Home olha só o mês seguinte; aqui mostramos os 12 meses à frente,
+   qual mês sai da janela em cada um e o valor fixo que evita os saltos. */
+function renderProjecao() {
+  const baseIdx = STATE.months.length - 1;
+  const base = STATE.months[baseIdx];
+  setTopbar('Projeção', `Próximos 12 meses • a partir de ${monthLabel(base.key)}`);
+
+  if (base.regime !== 'ME') {
+    document.getElementById('content').innerHTML = `
+      <div class="alert alert-info">
+        <div class="insight-head">
+          <div class="insight-ico info">📌</div>
+          <div>
+            <div class="alert-title">Projeção é só para ME</div>
+            <div class="alert-body">O último mês lançado (${monthLabel(base.key)}) está como MEI, que não tem Fator R. Quando migrar para ME, a projeção dos próximos 12 meses aparece aqui.</div>
+          </div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const p = planoProLabore(STATE.months, baseIdx, STATE.params, STATE.params.fatProjecao);
+  const L = p.linhas;
+  const metaPct = fmtPct(p.meta);
+  const ultimo = L[L.length - 1].key;
+  const inicioNivel = p.reforcoBase ? L[1].key : L[0].key;
+
+  const premissaHTML = `
+    <h2 class="section-title">Faturamento esperado</h2>
+    <div class="card">
+      <div class="field" style="margin-bottom:0;">
+        <label>Quanto você espera faturar por mês</label>
+        <input type="text" inputmode="decimal" id="pj-fat" value="${p.fatAuto ? '' : numToInputMoney(p.fatProj)}" placeholder="${numToInputMoney(p.fatMedio)} (média)">
+        <div class="hint">${p.fatAuto
+          ? (p.mesesMedia ? `Em branco = média dos ${p.mesesMedia} ${p.mesesMedia === 1 ? 'mês' : 'meses'} com faturamento nos últimos 12.` : 'Nenhum faturamento lançado ainda — digite quanto espera faturar.')
+          : 'Valor digitado por você. Apague para voltar à média automática.'}
+          Meses já lançados usam o valor real.</div>
+      </div>
+    </div>`;
+
+  if (p.fatProj <= 0 && L.every(l => l.faturamento <= 0)) {
+    document.getElementById('content').innerHTML = premissaHTML;
+    wireProjecao();
+    return;
+  }
+
+  /* ---------- o número principal ---------- */
+  const heroHTML = `
+    <div class="card proj-hero">
+      <div class="hero-label">Pró-labore nivelado</div>
+      <div class="proj-value">${fmtBRL(p.nivel)}<span>/mês</span></div>
+      <div class="proj-sub">Retirando esse valor todo mês de <strong>${monthLabel(inicioNivel)} a ${monthLabel(ultimo)}</strong>, o Fator R não fica abaixo de ${metaPct} em nenhum mês — e nenhum mês fica pesado.</div>
+      ${p.reforcoBase ? `<div class="proj-reforco">⚠️ <strong>${monthLabel(L[0].key)}</strong> precisa de <strong>${fmtBRL(p.reforcoBase)}</strong>: a conta já está abaixo da meta e esse reforço é para o mês que vem não cair no Anexo V.</div>` : ''}
+      <table class="audit-tbl proj-cmp">
+        <thead><tr><th></th><th>Só o mínimo</th><th>Nivelado</th></tr></thead>
+        <tbody>
+          <tr><td>Maior retirada num mês</td><td class="${p.picoMinimo > p.picoNivelado + 0.5 ? 'proj-pico' : ''}">${fmtBRL(p.picoMinimo)}</td><td>${fmtBRL(p.picoNivelado)}</td></tr>
+          <tr><td>Pró-labore em 12 meses</td><td>${fmtBRL(p.totalMinimo)}</td><td>${fmtBRL(p.totalNivelado)}</td></tr>
+          <tr><td>INSS em 12 meses</td><td>${fmtBRL(p.inssMinimo)}</td><td>${fmtBRL(p.inssNivelado)}</td></tr>
+        </tbody>
+      </table>
+    </div>`;
+
+  /* ---------- por que o mínimo dá saltos (com o mês real que causa o salto) ---------- */
+  const piorIdx = L.reduce((a, l, i) => (l.minimo > L[a].minimo ? i : a), 0);
+  const pior = L[piorIdx];
+  const temSalto = pior.minimo > p.nivel + 0.5;
+  const porqueHTML = `
+    <div class="card">
+      <div class="panel-title" style="margin-bottom:8px;">Por que o mínimo dá saltos?</div>
+      <div class="proj-text">O Fator R soma sempre os <strong>últimos 12 meses</strong>. Todo mês entra um mês novo e <strong>sai o mais antigo</strong>. Um pró-labore alto segura a conta por 12 meses — quando ele sai, deixa um buraco quase do mesmo tamanho.</div>
+      ${temSalto && pior.sai ? `
+        <div class="proj-text">No seu caso: em <strong>${monthLabel(pior.key)}</strong> sai da conta <strong>${monthLabel(pior.sai.key)}</strong>, quando você tirou <span class="n">${fmtBRL(pior.sai.proLabore)}</span>. Quem vai tirando só o mínimo até lá precisa repor de uma vez: <span class="n proj-pico">${fmtBRL(pior.minimo)}</span> naquele mês.</div>
+        <div class="proj-text">Nivelando, esse peso é dividido entre os meses: <span class="n">${fmtBRL(p.nivel)}</span> por mês. Custa <span class="n">${fmtBRL(Math.max(0, p.inssNivelado - p.inssMinimo))}</span> a mais de INSS no período, mas nenhum mês aperta o caixa — e o que passar da meta continua na conta, deixando o ano seguinte mais leve.</div>
+      ` : `
+        <div class="proj-text">Nos próximos 12 meses nenhum mês pesado sai da conta — tirar o mínimo não vai dar susto agora. Mesmo assim, ficar perto de ${metaPct} do faturamento de cada mês evita que o salto apareça mais pra frente.</div>
+      `}
+      <div class="proj-regra">
+        <div class="l">Regra de bolso depois desse período</div>
+        <div class="v">${metaPct} do faturamento de cada mês <span>≈ ${fmtBRL(p.sustentavel)}/mês</span></div>
+      </div>
+    </div>`;
+
+  /* ---------- mês a mês ---------- */
+  const linhas = L.map(l => `
+    <tr>
+      <td>${monthLabel(l.key)}${l.fatEstimado ? ' *' : ''}
+        ${l.sai ? `<div class="proj-sai ${l.sai.proLabore > p.nivel + 0.5 ? 'pesado' : ''}">sai ${monthLabel(l.sai.key)}: ${fmtBRL(l.sai.proLabore)}</div>` : ''}</td>
+      <td class="${l.minimo > p.nivel + 0.5 ? 'proj-pico' : ''}">${numToInputMoney(l.minimo)}<div class="proj-fr">${fmtPct(l.fatorRMinimo)}</div></td>
+      <td>${numToInputMoney(l.nivelado)}<div class="proj-fr">${fmtPct(l.fatorRNivelado)}</div></td>
+    </tr>`).join('');
+  const temEstimado = L.some(l => l.fatEstimado);
+
+  document.getElementById('content').innerHTML = `
+    ${heroHTML}
+    ${porqueHTML}
+
+    <div class="card">
+      <div class="panel-head"><div class="panel-title">Pró-labore mês a mês</div></div>
+      <div class="chart-legend">
+        <span class="item"><span class="legend-swatch" id="pj-sw-min"></span>Só o mínimo</span>
+        <span class="item"><span class="legend-swatch" id="pj-sw-niv"></span>Nivelado</span>
+      </div>
+      <div class="chart-box"><canvas id="chart-projecao"></canvas></div>
+      <table class="audit-tbl proj-tbl">
+        <thead><tr><th>Mês</th><th>Só o mínimo</th><th>Nivelado</th></tr></thead>
+        <tbody>${linhas}</tbody>
+        <tfoot><tr><td>Total (R$)</td><td>${numToInputMoney(p.totalMinimo)}</td><td>${numToInputMoney(p.totalNivelado)}</td></tr></tfoot>
+      </table>
+      <div class="note">Valores em R$. Embaixo de cada um, o Fator R que fica para o mês seguinte. "Sai" é o mês que deixa a conta de 12 meses naquele momento.${temEstimado ? ` * faturamento estimado em ${fmtBRL(p.fatProj)} (mês ainda sem faturamento lançado).` : ''} Nenhum mês fica abaixo de 1 salário mínimo (${fmtBRL(p.piso)}).</div>
+    </div>
+
+    ${premissaHTML}
+
+    <div class="note">Projeção para planejamento, usando a mesma regra do PGDAS-D (12 meses anteriores). Confirme sempre com seu contador.</div>
+  `;
+
+  wireProjecao();
+
+  const ctx = document.getElementById('chart-projecao');
+  const light = isLightMode();
+  const corMin = light ? '#0369A1' : '#38BDF8';
+  const corPico = light ? '#B45A0E' : '#F2B84B';
+  const corNiv = light ? '#7C3AED' : '#A78BFA';
+  document.getElementById('pj-sw-min').style.background = corMin;
+  document.getElementById('pj-sw-niv').style.background = corNiv;
+  if (typeof Chart === 'undefined') {
+    if (ctx) ctx.parentElement.remove();
+    return;
+  }
+  if (chartRef) chartRef.destroy();
+  const tickColor = light ? '#5B5478' : '#6F5FA0';
+  const gridColor = light ? 'rgba(40,20,80,0.10)' : '#241A4D';
+  chartRef = new Chart(ctx, {
+    data: {
+      labels: L.map(l => monthLabel(l.key)),
+      datasets: [
+        { type: 'line', label: 'Nivelado', data: L.map(l => +l.nivelado.toFixed(2)), borderColor: corNiv, borderWidth: 2.5, pointRadius: 0, tension: 0, fill: false },
+        { type: 'bar', label: 'Só o mínimo', data: L.map(l => +l.minimo.toFixed(2)),
+          backgroundColor: L.map(l => hexToRgba(l.minimo > p.nivel + 0.5 ? corPico : corMin, 0.75)), borderRadius: 4 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtBRL(c.parsed.y)}` } } },
+      scales: {
+        x: { ticks: { color: tickColor, font: { size: 10 } }, grid: { display: false } },
+        y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => (v >= 1000 ? (v / 1000).toLocaleString('pt-BR') + 'k' : v) }, grid: { color: gridColor } },
+      },
+    },
+  });
+}
+
+function wireProjecao() {
+  document.getElementById('pj-fat').addEventListener('change', e => {
+    const raw = e.target.value.trim();
+    const v = parseBRNumber(raw);
+    STATE.params.fatProjecao = raw === '' || isNaN(v) ? null : v;
+    persist();
+    renderProjecao();
+  });
+}
+
 /* ============================== TAB: HISTÓRICO ============================== */
 function renderHistorico() {
   setTopbar('Histórico', `${STATE.months.length} ${STATE.months.length === 1 ? 'mês' : 'meses'} registrados`);
@@ -919,6 +1085,7 @@ function renderAll() {
   renderTabbar();
   if (ACTIVE_TAB === 'inicio') renderInicio();
   else if (ACTIVE_TAB === 'lancar') renderLancar();
+  else if (ACTIVE_TAB === 'projecao') renderProjecao();
   else if (ACTIVE_TAB === 'historico') renderHistorico();
   else if (ACTIVE_TAB === 'ajustes') renderAjustes();
 }

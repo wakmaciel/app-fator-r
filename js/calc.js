@@ -50,6 +50,7 @@ const PARAMS_PADRAO = {
   fatorRMeta: 0.28,
   dasMei: 86.05,
   atividadeMei: '', // '', 'comercio', 'servico' ou 'misto' — só pra lembrar a escolha no seletor
+  fatProjecao: null, // faturamento esperado por mês na aba Projeção (null = média automática)
 };
 
 /* Paleta usada nos gráficos e nas categorias de despesa — propositalmente
@@ -270,6 +271,98 @@ function projectNextMonth(months, idx, params) {
   return {
     sf, sp, fatorR, anexoProjetado, proLaboreMinimo, folga,
     windowSize: j.meses, janelaKeys: j.keys, proLaboreMes, excedenteMes,
+  };
+}
+
+/* ---------- plano de pró-labore para os PRÓXIMOS 12 MESES ----------
+   O mínimo do projectNextMonth só olha UM mês à frente. Como a janela anda
+   (entra o mês novo, sai o de 12 meses atrás), um mês com pró-labore alto
+   "segura" o Fator R por 12 meses — e quando ele sai da conta o mínimo dá um
+   salto quase do mesmo tamanho. Aqui simulamos os 12 meses seguintes com duas
+   regras, pra deixar esse efeito visível:
+   - minimo:   cada mês tira só o necessário pra fechar a janela dele (≥ piso);
+   - nivelado: o MENOR valor fixo por mês que nunca deixa a janela furar
+               (o mês base pode precisar de um reforço pontual, se já estiver
+               abaixo da meta — esse fica fora do nível).
+   Faturamento dos meses ainda sem lançamento = fatEsperado (null = média dos
+   meses com faturamento na janela atual). */
+function planoProLabore(months, baseIdx, params, fatEsperado) {
+  const meta = params.fatorRMeta;
+  const piso = Number(params.salarioMinimo) || 0;
+  const base = months[baseIdx];
+  const byKey = {};
+  months.forEach(mm => { byKey[mm.key] = mm; });
+  const primeiroKey = months.reduce((a, mm) => (mm.key < a ? mm.key : a), months[0].key);
+
+  const jAtual = janelaSoma(months, base.key, 12, true);
+  const comFat = jAtual.keys.map(k => byKey[k]).filter(mm => mm && Number(mm.faturamento) > 0);
+  const fatMedio = comFat.length ? comFat.reduce((s, mm) => s + Number(mm.faturamento), 0) / comFat.length : 0;
+  const fatAuto = fatEsperado == null || isNaN(fatEsperado);
+  const fatProj = fatAuto ? fatMedio : Math.max(0, fatEsperado);
+
+  const keys = [];
+  for (let i = 0, k = base.key; i < 12; i++, k = nextKey(k)) keys.push(k);
+  const fatLancado = keys.map(k => (byKey[k] ? Number(byKey[k].faturamento) || 0 : 0));
+  const fat = fatLancado.map(f => (f > 0 ? f : fatProj));
+  // meses antes da base são fixos; antes do primeiro lançamento a empresa não existia (fica fora)
+  const hist = k => {
+    if (k < primeiroKey) return null;
+    const mm = byKey[k];
+    return { faturamento: mm ? Number(mm.faturamento) || 0 : 0, proLabore: mm ? Number(mm.proLabore) || 0 : 0 };
+  };
+
+  function simular(pisoRegra) {
+    const pl = [];
+    return keys.map((k, i) => {
+      let sf = 0, spOutros = 0, wk = k;
+      for (let j = 0; j < 12; j++, wk = prevKey(wk)) {
+        const pi = i - j;
+        if (pi >= 0) { sf += fat[pi]; if (pi < i) spOutros += pl[pi]; }
+        else { const h = hist(wk); if (h) { sf += h.faturamento; spOutros += h.proLabore; } }
+      }
+      const necessario = Math.max(0, meta * sf - spOutros);
+      const v = Math.max(pisoRegra, necessario);
+      pl.push(v);
+      return { proLabore: v, fatorR: sf ? (spOutros + v) / sf : 0 };
+    });
+  }
+
+  const minimo = simular(piso);
+  // "cabe" = com esse nível, nenhum mês depois do base precisa passar dele
+  const cabe = L => simular(L).every((r, i) => i === 0 || r.proLabore <= L + 0.005);
+  let lo = piso, hi = Math.max(piso, ...minimo.map(r => r.proLabore));
+  for (let it = 0; it < 60; it++) { const mid = (lo + hi) / 2; if (cabe(mid)) hi = mid; else lo = mid; }
+  let nivel = Math.round(hi * 100) / 100;
+  if (!cabe(nivel)) nivel = Math.ceil(hi * 100) / 100;
+  const nivelado = simular(nivel);
+
+  const inss = v => Math.min(v, params.tetoInss) * params.aliqInss;
+  const soma = (arr, f) => arr.reduce((s, r) => s + f(r), 0);
+  const linhas = keys.map((k, i) => {
+    let saiKey = k;
+    for (let j = 0; j < 12; j++) saiKey = prevKey(saiKey);
+    const h = hist(saiKey);
+    return {
+      key: k,
+      faturamento: fat[i],
+      fatEstimado: !(fatLancado[i] > 0),
+      sai: h ? { key: saiKey, faturamento: h.faturamento, proLabore: h.proLabore } : null,
+      minimo: minimo[i].proLabore, fatorRMinimo: minimo[i].fatorR,
+      nivelado: nivelado[i].proLabore, fatorRNivelado: nivelado[i].fatorR,
+    };
+  });
+
+  return {
+    baseKey: base.key, meta, piso, fatMedio, fatProj, fatAuto, mesesMedia: comFat.length,
+    sustentavel: meta * fatProj, // ritmo que se mantém sozinho depois que a janela renova
+    nivel, reforcoBase: nivelado[0].proLabore > nivel + 0.005 ? nivelado[0].proLabore : 0,
+    linhas,
+    picoMinimo: Math.max(...minimo.map(r => r.proLabore)),
+    picoNivelado: Math.max(...nivelado.map(r => r.proLabore)),
+    totalMinimo: soma(minimo, r => r.proLabore),
+    totalNivelado: soma(nivelado, r => r.proLabore),
+    inssMinimo: soma(minimo, r => inss(r.proLabore)),
+    inssNivelado: soma(nivelado, r => inss(r.proLabore)),
   };
 }
 

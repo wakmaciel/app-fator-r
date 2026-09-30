@@ -721,3 +721,25 @@ details.audit[open] > summary { color: var(--text); margin-bottom: 4px; }
   font-weight: 600;
   color: var(--text-dim);
 }
+
+/* ---------- aba Projeção ---------- */
+.proj-value { font-family: var(--font-mono); font-size: 30px; font-weight: 700; color: var(--primary); margin-top: 6px; letter-spacing: -0.5px; }
+.proj-value span { font-size: 14px; font-weight: 500; color: var(--text-faint); margin-left: 4px; }
+.proj-sub { font-size: 13px; color: var(--text-dim); line-height: 1.5; margin-top: 6px; }
+.proj-sub strong, .proj-text strong, .proj-reforco strong { color: var(--text); }
+.proj-reforco { font-size: 12.5px; line-height: 1.5; color: var(--text-dim); background: var(--warning-soft); border-radius: 12px; padding: 9px 11px; margin-top: 12px; }
+.proj-text { font-size: 13px; color: var(--text-dim); line-height: 1.55; margin-top: 8px; }
+.proj-text:first-of-type { margin-top: 0; }
+.proj-text .n { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+.proj-regra { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--hairline); }
+.proj-regra .l { font-size: 11.5px; color: var(--text-faint); font-weight: 600; }
+.proj-regra .v { font-size: 14px; font-weight: 600; color: var(--success); margin-top: 3px; }
+.proj-regra .v span { display: block; font-family: var(--font-mono); font-size: 12.5px; color: var(--text-dim); font-weight: 500; margin-top: 2px; }
+.audit-tbl td.proj-pico, .proj-text .proj-pico { color: var(--warning); font-weight: 700; }
+.proj-cmp td:first-child { font-family: var(--font-body); }
+.proj-tbl td { vertical-align: top; padding: 7px 0; }
+.proj-tbl td:first-child { color: var(--text); font-weight: 600; }
+.proj-sai { font-size: 10.5px; color: var(--text-faint); font-weight: 500; margin-top: 2px; }
+.proj-sai.pesado { color: var(--warning); font-weight: 600; }
+.proj-fr { font-size: 10px; color: var(--text-faint); font-weight: 500; margin-top: 2px; }
+.proj-tbl th:not(:first-child), .proj-tbl td:not(:first-child) { padding-left: 10px; white-space: nowrap; }
