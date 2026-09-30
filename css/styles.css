@@ -743,3 +743,11 @@ details.audit[open] > summary { color: var(--text); margin-bottom: 4px; }
 .proj-sai.pesado { color: var(--warning); font-weight: 600; }
 .proj-fr { font-size: 10px; color: var(--text-faint); font-weight: 500; margin-top: 2px; }
 .proj-tbl th:not(:first-child), .proj-tbl td:not(:first-child) { padding-left: 10px; white-space: nowrap; }
+button.proj-mini { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.proj-mini-body { flex: 1; min-width: 0; }
+.proj-mini-v { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--primary); margin-top: 4px; }
+.proj-mini-v span { font-size: 12.5px; font-weight: 500; color: var(--text-faint); margin-left: 3px; }
+.proj-mini-s { font-size: 12.5px; color: var(--text-dim); line-height: 1.5; margin-top: 4px; }
+.proj-mini-s strong { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
+.proj-mini-s .proj-pico { color: var(--warning); }
+.proj-mini-go { font-size: 26px; line-height: 1; color: var(--text-faint); }

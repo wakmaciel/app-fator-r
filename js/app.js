@@ -316,6 +316,30 @@ function renderInicio() {
     </div>` ;
   })() : '';
 
+  /* ---------- atalho pra aba Projeção: o valor fixo que evita os saltos ----------
+     Sempre a partir do último mês lançado, igual à aba Projeção, pra os dois
+     números nunca discordarem. */
+  const ultIdx = STATE.months.length - 1;
+  const plano = STATE.months[ultIdx].regime === 'ME'
+    ? planoProLabore(STATE.months, ultIdx, STATE.params, STATE.params.fatProjecao) : null;
+  const nivelHTML = plano && (plano.fatProj > 0 || plano.linhas.some(l => l.faturamento > 0)) ? (() => {
+    const pior = plano.linhas.reduce((a, l) => (l.minimo > a.minimo ? l : a), plano.linhas[0]);
+    const temSalto = pior.minimo > plano.nivel + 0.5;
+    const ultimo = plano.linhas[plano.linhas.length - 1].key;
+    return `
+    <button class="card proj-mini" id="btn-ir-projecao">
+      <div class="proj-mini-body">
+        <div class="hero-label">Pró-labore nivelado</div>
+        <div class="proj-mini-v">${fmtBRL(plano.nivel)}<span>/mês</span></div>
+        <div class="proj-mini-s">${temSalto
+          ? `Só o mínimo daria um mês de <strong class="proj-pico">${fmtBRL(pior.minimo)}</strong> em ${monthLabel(pior.key)}. Nivelando, nenhum mês pesa até ${monthLabel(ultimo)}.`
+          : `Mantém o Fator R na meta até ${monthLabel(ultimo)} sem nenhum mês pesado.`}
+          ${plano.reforcoBase ? ` ${monthLabel(plano.baseKey)} precisa de um reforço de <strong>${fmtBRL(plano.reforcoBase)}</strong>.` : ''}</div>
+      </div>
+      <span class="proj-mini-go">›</span>
+    </button>`;
+  })() : '';
+
   /* ---------- KPIs do mês, com o total do ano / mínimo como contexto ---------- */
   const N = Math.min(12, selIdx + 1);
   const mSlice = STATE.months.slice(selIdx + 1 - N, selIdx + 1);
@@ -432,6 +456,7 @@ function renderInicio() {
 
   document.getElementById('content').innerHTML = `
     ${heroHTML}
+    ${nivelHTML}
     ${janelaHTML}
     ${kpisHTML}
 
@@ -455,6 +480,8 @@ function renderInicio() {
 
   document.getElementById('btn-pick-month').addEventListener('click', openMonthPickerSheet);
   document.getElementById('btn-ver-historico').addEventListener('click', () => goTo('historico'));
+  const btnProj = document.getElementById('btn-ir-projecao');
+  if (btnProj) btnProj.addEventListener('click', () => goTo('projecao'));
   const btnLancar = document.getElementById('btn-ir-lancar');
   if (btnLancar) btnLancar.addEventListener('click', () => goTo('lancar', sel.key));
 
