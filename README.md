@@ -84,6 +84,7 @@ index.html          shell da aplicação (liga CSS/JS)
 css/styles.css       tema roxo, todos os estilos
 js/calc.js           motor de cálculo puro (sem DOM) — Fator R, Anexo III/V
 js/storage.js        persistência em localStorage + exportar/importar backup
+js/drive.js          backup automático no Google Drive (OAuth no navegador)
 js/app.js            interface, abas e eventos
 manifest.json        manifest da PWA
 icons/               ícones do app (192/512/apple-touch-icon)
@@ -110,6 +111,29 @@ Não precisa instalar nada — usa só o `node` e o módulo `assert` nativo.
 1. Suba esta pasta para um repositório no GitHub.
 2. Em **Settings → Pages**, selecione a branch principal e a pasta raiz (`/`).
 3. O GitHub vai te dar uma URL pública (`https://seu-usuario.github.io/seu-repo/`).
+
+## ☁️ Backup automático no Google Drive — configuração
+
+O backup no Drive (Ajustes → "Backup automático no Google Drive") usa o
+client OAuth definido em `js/drive.js`. No [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+nesse client do tipo **Aplicativo da Web**:
+
+1. **Origens JavaScript autorizadas**: `https://wakmaciel.github.io`
+   (login por popup, usado no navegador comum).
+2. **URIs de redirecionamento autorizados**: `https://wakmaciel.github.io/app-fator-r/`
+   — exatamente assim, com a barra no fim. É o login usado pelo **app
+   instalado** (PWA no iOS/Android); sem ela o Google mostra
+   "Erro 400: redirect_uri_mismatch".
+3. **APIs e serviços → Biblioteca**: a **Google Drive API** precisa estar ativada.
+4. **Tela de consentimento OAuth**: publique como **Em produção**. Em "Teste",
+   só usuários de teste entram e a autorização vence a cada 7 dias. O escopo
+   `drive.file` não é sensível, então não exige verificação do Google.
+
+Como não há servidor, o Google só entrega tokens de ~1 hora (sem refresh
+token). O app renova sozinho quando dá: ao abrir com alteração pendente,
+faz um login silencioso por redirect. Quando isso não é possível, mostra um
+aviso na tela inicial com o botão "Reconectar e fazer backup". As alterações
+ficam marcadas como pendentes e vão para o Drive assim que houver token.
 
 ## 🚀 Rodando localmente
 

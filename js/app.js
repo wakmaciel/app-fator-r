@@ -456,6 +456,7 @@ function renderInicio() {
   }
 
   document.getElementById('content').innerHTML = `
+    <div id="drive-banner">${driveBannerHTML()}</div>
     ${heroHTML}
     ${nivelHTML}
     ${janelaHTML}
@@ -481,6 +482,7 @@ function renderInicio() {
 
   document.getElementById('btn-pick-month').addEventListener('click', openMonthPickerSheet);
   document.getElementById('btn-ver-historico').addEventListener('click', () => goTo('historico'));
+  wireDriveBanner();
   const btnProj = document.getElementById('btn-ir-projecao');
   if (btnProj) btnProj.addEventListener('click', () => goTo('projecao'));
   const btnLancar = document.getElementById('btn-ir-lancar');
@@ -992,18 +994,97 @@ function driveCardHTML() {
   const last = st.lastBackup ? new Date(st.lastBackup).toLocaleString('pt-BR') : null;
   if (!st.enabled) {
     return `
+      ${st.error ? `<div class="note" style="margin-top:0;color:var(--danger);">${esc(st.error)}</div>` : ''}
       <div class="note" style="margin-top:0;">Conecte sua conta Google e o app salva automaticamente um arquivo <strong>fator-r-backup.json</strong> no seu Drive alguns segundos depois de cada alteração — meses, despesas e parâmetros.</div>
       <button class="btn btn-primary" id="btn-drive-on">Conectar ao Google Drive</button>
     `;
   }
+  if (st.remoteFound) {
+    const quando = st.remoteFound.modifiedTime ? new Date(st.remoteFound.modifiedTime).toLocaleString('pt-BR') : null;
+    return `
+      <div class="alert alert-warning" style="margin:0 0 12px;">
+        <div class="alert-title">Já existe um backup no seu Drive</div>
+        <div class="alert-body">Encontramos o arquivo fator-r-backup.json${quando ? ` salvo em ${esc(quando)}` : ''}. Para não apagar nada, o backup automático fica pausado até você escolher: trazer esses dados para este aparelho ou substituir o arquivo do Drive pelos dados daqui.</div>
+      </div>
+      <button class="btn btn-primary" id="btn-drive-restore">Restaurar do Drive para este aparelho</button>
+      <button class="btn btn-secondary" id="btn-drive-overwrite" style="margin-top:8px;">Substituir o Drive pelos dados deste aparelho</button>
+      <button class="btn btn-ghost" id="btn-drive-off" style="margin-top:8px;">Desativar backup automático</button>
+    `;
+  }
+  const precisaLogin = st.needsAuth && !st.busy;
   return `
-    <div class="row"><div class="l">Backup automático</div><div class="v"><span class="badge badge-iii">Ativado</span></div></div>
+    <div class="row"><div class="l">Backup automático</div><div class="v"><span class="badge ${precisaLogin ? 'badge-mei' : 'badge-iii'}">${precisaLogin ? 'Pausado' : 'Ativado'}</span></div></div>
     <div class="row"><div class="l">Último backup</div><div class="v dim">${st.busy ? 'enviando…' : (last || 'ainda não feito')}</div></div>
-    ${st.error ? `<div class="note" style="color:var(--danger);">Última tentativa falhou: ${esc(st.error)} Toque em "Fazer backup agora" para tentar de novo (pode pedir login).</div>` : ''}
-    <button class="btn btn-secondary" id="btn-drive-now" ${st.busy ? 'disabled' : ''}>Fazer backup agora</button>
+    ${st.dirty && !st.busy ? `<div class="row"><div class="l">Alterações ainda não enviadas</div><div class="v dim">sim</div></div>` : ''}
+    ${precisaLogin
+      ? `<div class="note" style="color:var(--danger);">${esc(st.error || 'A sessão do Google expirou (ela dura cerca de 1 hora). Toque em "Reconectar e fazer backup" para continuar.')}</div>`
+      : (st.error ? `<div class="note" style="color:var(--danger);">Última tentativa falhou: ${esc(st.error)} O app tenta de novo na próxima alteração — ou toque em "Fazer backup agora".</div>` : '')}
+    ${precisaLogin && st.redirectUnproven ? `<div class="note">Se o Google mostrar "Erro 400: redirect_uri_mismatch", o endereço <strong>${esc(st.redirectUri)}</strong> precisa ser cadastrado em "URIs de redirecionamento autorizados" do client OAuth no Google Cloud Console.</div>` : ''}
+    <button class="btn ${precisaLogin ? 'btn-primary' : 'btn-secondary'}" id="btn-drive-now" ${st.busy ? 'disabled' : ''}>${precisaLogin ? 'Reconectar e fazer backup' : 'Fazer backup agora'}</button>
     <button class="btn btn-secondary" id="btn-drive-restore" style="margin-top:8px;">Restaurar do Drive</button>
     <button class="btn btn-ghost" id="btn-drive-off" style="margin-top:8px;">Desativar backup automático</button>
   `;
+}
+
+/* Aviso na tela inicial quando o backup automático precisa de um toque —
+   antes o erro só aparecia dentro de Ajustes e passava despercebido. */
+function driveBannerHTML() {
+  if (typeof driveStatus !== 'function') return '';
+  const st = driveStatus();
+  if (!st.enabled || st.busy) return '';
+  if (st.remoteFound) {
+    return `
+    <div class="alert alert-warning">
+      <div class="alert-title">Backup no Drive pausado</div>
+      <div class="alert-body">Já existe um backup no seu Google Drive. Escolha em Ajustes se quer restaurá-lo ou substituí-lo pelos dados deste aparelho.</div>
+      <button class="btn btn-secondary" id="btn-banner-drive-ajustes">Abrir Ajustes</button>
+    </div>`;
+  }
+  if (!st.needsAuth && !(st.error && st.dirty)) return '';
+  return `
+    <div class="alert alert-warning">
+      <div class="alert-title">${st.needsAuth ? 'Backup no Drive pausado' : 'Backup no Drive falhou'}</div>
+      <div class="alert-body">${st.needsAuth
+        ? esc(st.error || 'A sessão do Google expirou e há alterações que ainda não foram salvas no Drive.')
+        : 'Última tentativa: ' + esc(st.error)}</div>
+      <button class="btn btn-primary" id="btn-banner-drive">${st.needsAuth ? 'Reconectar e fazer backup' : 'Tentar de novo'}</button>
+    </div>`;
+}
+
+function wireDriveBanner() {
+  const btn = document.getElementById('btn-banner-drive');
+  if (btn) btn.addEventListener('click', () => driveReconnect(() => STATE));
+  const btnAj = document.getElementById('btn-banner-drive-ajustes');
+  if (btnAj) btnAj.addEventListener('click', () => { ACTIVE_TAB = 'ajustes'; renderAll(); });
+}
+
+function updateDriveBanner() {
+  const box = document.getElementById('drive-banner');
+  if (!box) return;
+  box.innerHTML = driveBannerHTML();
+  wireDriveBanner();
+}
+
+/* Restaura do Drive (a pessoa já confirmou). No PWA pode navegar pro login
+   do Google — nesse caso a restauração continua sozinha na volta. */
+async function runDriveRestore() {
+  try {
+    const parsed = await driveRestore();
+    if (!parsed || !Array.isArray(parsed.months) || !parsed.params) throw new Error('O arquivo no Drive não parece um backup válido do Fator R.');
+    parsed.months.forEach(m => { if (!Array.isArray(m.despesas)) m.despesas = []; });
+    delete parsed.loans;
+    if (!parsed.empresa) parsed.empresa = { nome: '' };
+    sortMonths(parsed.months);
+    STATE = parsed;
+    ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
+    saveState(STATE);
+    backupMsg = 'Backup restaurado do Google Drive.';
+    ACTIVE_TAB = 'inicio';
+    renderAll();
+  } catch (e) {
+    alert('Falha ao restaurar: ' + e.message);
+    updateDriveCard();
+  }
 }
 
 function wireDriveCard() {
@@ -1020,8 +1101,14 @@ function wireDriveCard() {
   });
 
   const btnNow = document.getElementById('btn-drive-now');
-  // interactive=true: se a sessão do Google expirou, pode reabrir o login
-  if (btnNow) btnNow.addEventListener('click', () => driveRunBackup(() => STATE, true));
+  // interativo: se a sessão do Google expirou, reabre o login
+  if (btnNow) btnNow.addEventListener('click', () => driveReconnect(() => STATE));
+
+  const btnOverwrite = document.getElementById('btn-drive-overwrite');
+  if (btnOverwrite) btnOverwrite.addEventListener('click', () => {
+    if (!confirm('Substituir o backup que está no Drive pelos dados DESTE aparelho? O conteúdo atual do arquivo no Drive será perdido.')) return;
+    driveOverwriteRemote(() => STATE);
+  });
 
   const btnOff = document.getElementById('btn-drive-off');
   if (btnOff) btnOff.addEventListener('click', () => {
@@ -1031,24 +1118,9 @@ function wireDriveCard() {
   });
 
   const btnRestore = document.getElementById('btn-drive-restore');
-  if (btnRestore) btnRestore.addEventListener('click', async () => {
+  if (btnRestore) btnRestore.addEventListener('click', () => {
     if (!confirm('Substituir os dados DESTE aparelho pelo backup salvo no Drive? Faça isso ao trocar de aparelho ou recuperar dados. Não pode ser desfeito.')) return;
-    try {
-      const parsed = await driveRestore();
-      if (!Array.isArray(parsed.months) || !parsed.params) throw new Error('O arquivo no Drive não parece um backup válido do Fator R.');
-      parsed.months.forEach(m => { if (!Array.isArray(m.despesas)) m.despesas = []; });
-      delete parsed.loans;
-      if (!parsed.empresa) parsed.empresa = { nome: '' };
-      sortMonths(parsed.months);
-      STATE = parsed;
-      ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
-      saveState(STATE);
-      backupMsg = 'Backup restaurado do Google Drive.';
-      ACTIVE_TAB = 'inicio';
-      renderAll();
-    } catch (e) {
-      alert('Falha ao restaurar: ' + e.message);
-    }
+    runDriveRestore();
   });
 }
 
@@ -1208,10 +1280,14 @@ function renderAll() {
   ACTIVE_MONTH_KEY = STATE.months[STATE.months.length - 1]?.key || null;
   renderAll();
   document.getElementById('fab-add').addEventListener('click', openAddMenu);
-  // atualiza o card do Drive quando um backup começa/termina/falha
-  document.addEventListener('drive-status', () => { if (ACTIVE_TAB === 'ajustes') updateDriveCard(); });
-  // se acabou de voltar do login do Google (fluxo redirect do PWA), já faz o 1º backup
-  if (typeof driveAfterInit === 'function') driveAfterInit(() => STATE);
+  // atualiza o card/aviso do Drive quando um backup começa/termina/falha
+  document.addEventListener('drive-status', () => {
+    if (ACTIVE_TAB === 'ajustes') updateDriveCard();
+    else if (ACTIVE_TAB === 'inicio') updateDriveBanner();
+  });
+  // volta do login do Google (redirect do PWA) ou backup que ficou pendente:
+  // continua o backup — ou a restauração, se foi isso que a pessoa pediu
+  if (typeof driveAfterInit === 'function') driveAfterInit(() => STATE, runDriveRestore);
   if (window.matchMedia) {
     window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => renderAll());
   }

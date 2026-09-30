@@ -45,6 +45,13 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
 
+  // API do Google Drive / login: nunca passa pelo cache — são respostas com o
+  // token da pessoa e o conteúdo do backup (e um backup velho vindo do cache
+  // numa restauração offline seria pior que um erro)
+  const host = new URL(req.url).hostname;
+  if (host === 'www.googleapis.com' || host === 'oauth2.googleapis.com'
+    || (host === 'accounts.google.com' && !req.url.includes('/gsi/client'))) return;
+
   // Chart.js (CDN) e outras chamadas externas: tenta rede primeiro e guarda em cache
   // para funcionar offline depois do primeiro carregamento com internet.
   if (new URL(req.url).origin !== self.location.origin) {
