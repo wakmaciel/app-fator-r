@@ -758,3 +758,4 @@ button.proj-mini { display: flex; align-items: center; gap: 12px; width: 100%; t
 .proj-status strong { color: var(--text); }
 .audit-tbl td.proj-ruim, .proj-mini-s .proj-ruim { color: var(--danger); font-weight: 700; }
 .proj-real { color: var(--primary); font-weight: 600; }
+.proj-tbl tr.proj-sep td { font-family: var(--font-body); font-size: 10.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--primary); text-align: left; padding: 14px 0 6px; }

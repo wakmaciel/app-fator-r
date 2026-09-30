@@ -798,11 +798,11 @@ function renderProjecao() {
       <div class="proj-sub">Retirando esse valor nos meses em aberto de <strong>${monthLabel(inicioNivel)} a ${monthLabel(ultimo)}</strong>, o Fator R não fica abaixo de ${metaPct} em nenhum mês — e nenhum mês fica pesado.</div>
       ${p.reforcoBase ? `<div class="proj-reforco">⚠️ <strong>${monthLabel(L[0].key)}</strong> precisa de <strong>${fmtBRL(p.reforcoBase)}</strong>: a conta já está abaixo da meta e esse reforço é para o mês que vem não cair no Anexo V.</div>` : ''}
       <table class="audit-tbl proj-cmp">
-        <thead><tr><th>R$</th><th>Seu ritmo</th><th>Só o mínimo</th><th>Nivelado</th></tr></thead>
+        <thead><tr><th>Próximos 12 meses</th><th>Seu ritmo</th><th>Nivelado</th></tr></thead>
         <tbody>
-          <tr><td>Maior mês</td><td>${numToInputMoney(picoRitmo)}</td><td class="${p.picoMinimo > p.picoNivelado + 0.5 ? 'proj-pico' : ''}">${numToInputMoney(p.picoMinimo)}</td><td>${numToInputMoney(p.picoNivelado)}</td></tr>
-          <tr><td>12 meses</td><td>${numToInputMoney(p.totalRitmo)}</td><td>${numToInputMoney(p.totalMinimo)}</td><td>${numToInputMoney(p.totalNivelado)}</td></tr>
-          <tr><td>Meses &lt; ${metaPct}</td><td class="${abaixoMeta('fatorRRitmo') ? 'proj-ruim' : ''}">${abaixoMeta('fatorRRitmo')}</td><td>${abaixoMeta('fatorRMinimo')}</td><td>${abaixoMeta('fatorRNivelado')}</td></tr>
+          <tr><td>Maior mês</td><td>${numToInputMoney(picoRitmo)}</td><td>${numToInputMoney(p.picoNivelado)}</td></tr>
+          <tr><td>Total (R$)</td><td>${numToInputMoney(p.totalRitmo)}</td><td>${numToInputMoney(p.totalNivelado)}</td></tr>
+          <tr><td>Meses abaixo de ${metaPct}</td><td class="${abaixoMeta('fatorRRitmo') ? 'proj-ruim' : ''}">${abaixoMeta('fatorRRitmo')}</td><td>${abaixoMeta('fatorRNivelado')}</td></tr>
         </tbody>
       </table>
     </div>`;
@@ -825,45 +825,44 @@ function renderProjecao() {
       </div>
     </div>`;
 
-  /* ---------- 4. mês a mês, um cenário por vez ---------- */
+  /* ---------- 4. linha do tempo: o que você retirou de verdade + a projeção ----------
+     Os 12 meses reais que estão na conta hoje, e na sequência os 12 meses do
+     cenário escolhido. O mês base só entra em "retirado" se já tiver
+     pró-labore lançado; senão ele é o primeiro mês da projeção. */
   const CEN = {
     ritmo: { label: 'Seu ritmo', pl: 'ritmo', fr: 'fatorRRitmo' },
     nivelado: { label: 'Nivelado', pl: 'nivelado', fr: 'fatorRNivelado' },
-    minimo: { label: 'Só o mínimo', pl: 'minimo', fr: 'fatorRMinimo' },
   };
   if (!CEN[PROJ_CENARIO]) PROJ_CENARIO = 'ritmo';
   const cen = CEN[PROJ_CENARIO];
-  const linhas = L.map(l => {
-    const ruim = l[cen.fr] < p.meta - 1e-9;
-    const pico = !l.real && l[cen.pl] > p.nivel + 0.5;
-    return `
+  const baseReal = L[0].real;
+  const tl = [
+    ...p.janelaReal.filter(j => baseReal || j.key !== L[0].key).map(j => ({
+      key: j.key, pl: j.proLabore, fr: j.regime === 'MEI' ? null : j.fatorR, secao: 'retirado', real: true,
+      hint: `sai em ${monthLabel(j.saiEm)}`, pesado: j.proLabore > p.nivel + 0.5, marca: j.lancado ? '' : ' †',
+    })),
+    ...L.slice(baseReal ? 1 : 0).map(l => ({
+      key: l.key, pl: l[cen.pl], fr: l[cen.fr], secao: 'projecao', real: l.real,
+      hint: l.sai ? `sai ${monthLabel(l.sai.key)} · ${numToInputMoney(l.sai.proLabore)}` : '',
+      pesado: l.sai && l.sai.proLabore > p.nivel + 0.5, marca: l.fatEstimado ? ' *' : '',
+    })),
+  ];
+  const abaixo = r => r.fr != null && r.fr < p.meta - 1e-9;
+  const linhaTL = r => `
     <tr>
-      <td>${monthLabel(l.key)}${l.fatEstimado ? ' *' : ''}
-        ${l.sai ? `<div class="proj-sai ${l.sai.proLabore > p.nivel + 0.5 ? 'pesado' : ''}">sai ${monthLabel(l.sai.key)} · ${numToInputMoney(l.sai.proLabore)}</div>` : ''}</td>
-      <td class="${pico ? 'proj-pico' : ''}">${numToInputMoney(l[cen.pl])}<div class="proj-fr">${l.real ? '<span class="proj-real">lançado</span>' : 'simulado'}</div></td>
-      <td class="${ruim ? 'proj-ruim' : ''}">${fmtPct(l[cen.fr])}<div class="proj-fr">${ruim ? '→ Anexo V' : 'Anexo III'}</div></td>
+      <td>${monthLabel(r.key)}${r.marca}${r.hint ? `<div class="proj-sai ${r.pesado ? 'pesado' : ''}">${r.hint}</div>` : ''}</td>
+      <td class="${r.secao === 'retirado' && r.pesado ? 'proj-pico' : ''}">${numToInputMoney(r.pl)}<div class="proj-fr">${r.secao === 'retirado' ? 'retirado' : r.real ? '<span class="proj-real">lançado</span>' : 'simulado'}</div></td>
+      <td class="${abaixo(r) ? 'proj-ruim' : ''}">${r.fr == null ? '—' : fmtPct(r.fr)}<div class="proj-fr">${r.fr == null ? 'MEI' : abaixo(r) ? '→ Anexo V' : 'Anexo III'}</div></td>
     </tr>`;
-  }).join('');
+  const retirados = tl.filter(r => r.secao === 'retirado');
+  const projetados = tl.filter(r => r.secao === 'projecao');
+  const linhas = `
+    <tr class="proj-sep"><td colspan="3">Retirado (lançado no app)</td></tr>
+    ${retirados.map(linhaTL).join('')}
+    <tr class="proj-sep"><td colspan="3">Projeção · ${cen.label.toLowerCase()}</td></tr>
+    ${projetados.map(linhaTL).join('')}`;
   const temEstimado = L.some(l => l.fatEstimado);
-
-  /* ---------- 5. a janela real de hoje: o que está na conta e quando sai ---------- */
-  const janelaHTML = `
-    <div class="card">
-      <details class="audit">
-        <summary>Seus últimos 12 meses lançados</summary>
-        <table class="audit-tbl proj-tbl">
-          <thead><tr><th>Mês</th><th>Faturam.</th><th>Pró-labore</th><th>Sai em</th></tr></thead>
-          <tbody>${p.janelaReal.map(j => `
-            <tr>
-              <td>${monthLabel(j.key)}${j.lancado ? '' : ' †'}</td>
-              <td>${numToInputMoney(j.faturamento)}</td>
-              <td class="${j.proLabore > p.nivel + 0.5 ? 'proj-pico' : j.proLabore === 0 ? 'audit-zero' : ''}">${numToInputMoney(j.proLabore)}</td>
-              <td>${monthLabel(j.saiEm)}</td>
-            </tr>`).join('')}</tbody>
-        </table>
-        <div class="note">É isso que a projeção usa como ponto de partida. "Sai em" é o mês em que aquele lançamento deixa a conta de 12 meses — um pró-labore alto (em laranja) faz falta a partir dali.${p.janelaReal.some(j => !j.lancado) ? ' † mês sem lançamento, conta como R$ 0,00.' : ''}</div>
-      </details>
-    </div>`;
+  const temSemLancamento = p.janelaReal.some(j => !j.lancado);
 
   document.getElementById('content').innerHTML = `
     ${ritmoHTML}
@@ -875,8 +874,8 @@ function renderProjecao() {
         ${Object.entries(CEN).map(([id, c]) => `<button data-cen="${id}" class="${id === PROJ_CENARIO ? 'on' : ''}">${c.label}</button>`).join('')}
       </div>
       <div class="chart-legend">
-        <span class="item"><span class="legend-swatch" id="pj-sw-real"></span>Lançado</span>
-        <span class="item"><span class="legend-swatch" id="pj-sw-sim"></span>Simulado</span>
+        <span class="item"><span class="legend-swatch" id="pj-sw-real"></span>Retirado</span>
+        <span class="item"><span class="legend-swatch" id="pj-sw-sim"></span>Projeção</span>
         <span class="item"><span class="legend-swatch" id="pj-sw-fr"></span>Fator R</span>
         <span class="item"><span class="legend-swatch dashed"></span>Meta</span>
       </div>
@@ -885,10 +884,9 @@ function renderProjecao() {
         <thead><tr><th>Mês</th><th>Pró-labore</th><th>Fator R</th></tr></thead>
         <tbody>${linhas}</tbody>
       </table>
-      <div class="note">Valores em R$. O Fator R de cada linha é o que fica para o mês seguinte. "Sai" é o mês que deixa a conta de 12 meses naquele momento.${temEstimado ? ` * faturamento estimado em ${fmtBRL(p.fatProj)} (mês ainda sem faturamento lançado).` : ''}${PROJ_CENARIO !== 'ritmo' ? ` Nenhum mês simulado fica abaixo de 1 salário mínimo (${fmtBRL(p.piso)}).` : ''}</div>
+      <div class="note">Valores em R$. O Fator R de cada linha é o que fica para o mês seguinte. "Sai em" é quando um mês retirado deixa a conta de 12 meses — um pró-labore alto (em laranja) faz falta a partir dali.${temSemLancamento ? ' † mês sem lançamento, conta como R$ 0,00.' : ''}${temEstimado ? ` * faturamento estimado em ${fmtBRL(p.fatProj)} (mês ainda sem faturamento lançado).` : ''}${PROJ_CENARIO === 'nivelado' ? ` Nenhum mês simulado fica abaixo de 1 salário mínimo (${fmtBRL(p.piso)}).` : ''}</div>
     </div>
 
-    ${janelaHTML}
     ${porqueHTML}
     ${premissaHTML}
 
@@ -917,22 +915,23 @@ function renderProjecao() {
   if (chartRef) chartRef.destroy();
   const tickColor = light ? '#5B5478' : '#6F5FA0';
   const gridColor = light ? 'rgba(40,20,80,0.10)' : '#241A4D';
-  const ruim = l => l[cen.fr] < p.meta - 1e-9;
+  const corPonto = r => (abaixo(r) ? corRuim : corFr);
   chartRef = new Chart(ctx, {
     data: {
-      labels: L.map(l => monthLabel(l.key)),
+      labels: tl.map(r => monthLabel(r.key)),
       datasets: [
-        { type: 'line', label: 'Fator R', yAxisID: 'fr', data: L.map(l => +(l[cen.fr] * 100).toFixed(2)), borderColor: corFr, borderWidth: 2, pointRadius: 3,
-          pointBackgroundColor: L.map(l => (ruim(l) ? corRuim : corFr)), pointBorderColor: L.map(l => (ruim(l) ? corRuim : corFr)), tension: .3, fill: false },
-        { type: 'line', label: 'Meta', yAxisID: 'fr', data: L.map(() => +(p.meta * 100).toFixed(2)), borderColor: corFr, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
-        { type: 'bar', label: 'Pró-labore', yAxisID: 'y', data: L.map(l => +l[cen.pl].toFixed(2)), backgroundColor: L.map(l => hexToRgba(l.real ? corReal : corSim, l.real ? 0.85 : 0.5)), borderRadius: 4 },
+        { type: 'line', label: 'Fator R', yAxisID: 'fr', data: tl.map(r => (r.fr == null ? null : +(r.fr * 100).toFixed(2))), borderColor: corFr, borderWidth: 2, pointRadius: 2.5,
+          pointBackgroundColor: tl.map(corPonto), pointBorderColor: tl.map(corPonto), tension: .3, fill: false, spanGaps: false },
+        { type: 'line', label: 'Meta', yAxisID: 'fr', data: tl.map(() => +(p.meta * 100).toFixed(2)), borderColor: corFr, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+        { type: 'bar', label: 'Pró-labore', yAxisID: 'y', data: tl.map(r => +r.pl.toFixed(2)),
+          backgroundColor: tl.map(r => hexToRgba(r.secao === 'retirado' || r.real ? corReal : corSim, r.secao === 'retirado' || r.real ? 0.85 : 0.5)), borderRadius: 3 },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
       plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => (c.dataset.yAxisID === 'fr' ? `${c.dataset.label}: ${c.parsed.y.toFixed(1).replace('.', ',')}%` : `${c.dataset.label}: ${fmtBRL(c.parsed.y)}`) } } },
       scales: {
-        x: { ticks: { color: tickColor, font: { size: 10 } }, grid: { display: false } },
+        x: { ticks: { color: tickColor, font: { size: 9 }, maxRotation: 90, minRotation: 90, autoSkip: true, maxTicksLimit: 12 }, grid: { display: false } },
         y: { beginAtZero: true, position: 'left', ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => (v >= 1000 ? (v / 1000).toLocaleString('pt-BR') + 'k' : v) }, grid: { color: gridColor } },
         fr: { beginAtZero: true, position: 'right', ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => v + '%' }, grid: { display: false } },
       },

@@ -378,7 +378,11 @@ function planoProLabore(months, baseIdx, params, fatEsperado, plPretendido) {
     const h = hist(k);
     let sai = k;
     for (let j = 0; j < 12; j++) sai = nextKey(sai);
-    return { key: k, faturamento: h.faturamento, proLabore: h.proLabore, saiEm: sai, lancado: !!byKey[k] };
+    const j = janelaSoma(months, k, 12, true); // Fator R que esse mês deixou pro seguinte
+    return {
+      key: k, faturamento: h.faturamento, proLabore: h.proLabore, saiEm: sai, lancado: !!byKey[k],
+      regime: byKey[k] ? byKey[k].regime : 'ME', fatorR: j.sf ? j.sp / j.sf : 0,
+    };
   });
 
   return {
