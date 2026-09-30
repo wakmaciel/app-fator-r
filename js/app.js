@@ -317,21 +317,22 @@ function renderInicio() {
   })() : '';
 
   /* ---------- atalho pra aba Projeção: o valor fixo que evita os saltos ----------
-     Sempre a partir do último mês lançado, igual à aba Projeção, pra os dois
+     Mesma base e mesmas premissas da aba Projeção (planoAtual), pra os dois
      números nunca discordarem. */
-  const ultIdx = STATE.months.length - 1;
-  const plano = STATE.months[ultIdx].regime === 'ME'
-    ? planoProLabore(STATE.months, ultIdx, STATE.params, STATE.params.fatProjecao) : null;
+  const { plano } = planoAtual();
   const nivelHTML = plano && (plano.fatProj > 0 || plano.linhas.some(l => l.faturamento > 0)) ? (() => {
     const pior = plano.linhas.reduce((a, l) => (l.minimo > a.minimo ? l : a), plano.linhas[0]);
     const temSalto = pior.minimo > plano.nivel + 0.5;
     const ultimo = plano.linhas[plano.linhas.length - 1].key;
+    const f = plano.falhaRitmo;
     return `
     <button class="card proj-mini" id="btn-ir-projecao">
       <div class="proj-mini-body">
         <div class="hero-label">Pró-labore nivelado</div>
         <div class="proj-mini-v">${fmtBRL(plano.nivel)}<span>/mês</span></div>
-        <div class="proj-mini-s">${temSalto
+        <div class="proj-mini-s">${f
+          ? `Tirando o que você vem tirando (<strong>${fmtBRL(plano.plRitmo)}</strong>/mês), o Fator R cai para <strong class="proj-ruim">${fmtPct(f.fatorR)}</strong> em ${monthLabel(f.key)} e ${monthLabel(f.anexoEm)} vai para o Anexo V.`
+          : temSalto
           ? `Só o mínimo daria um mês de <strong class="proj-pico">${fmtBRL(pior.minimo)}</strong> em ${monthLabel(pior.key)}. Nivelando, nenhum mês pesa até ${monthLabel(ultimo)}.`
           : `Mantém o Fator R na meta até ${monthLabel(ultimo)} sem nenhum mês pesado.`}
           ${plano.reforcoBase ? ` ${monthLabel(plano.baseKey)} precisa de um reforço de <strong>${fmtBRL(plano.reforcoBase)}</strong>.` : ''}</div>
@@ -701,15 +702,34 @@ function renderLancar() {
 }
 
 /* ============================== TAB: PROJEÇÃO ==============================
-   Responde "quanto tirar de pró-labore pra não levar susto no ano que vem".
-   O mínimo da Home olha só o mês seguinte; aqui mostramos os 12 meses à frente,
-   qual mês sai da janela em cada um e o valor fixo que evita os saltos. */
+   Responde "com o que eu venho tirando, o Fator R aguenta os próximos 12
+   meses?" e "quanto tirar pra não levar susto?". Tudo em cima dos meses
+   lançados: o histórico entra com os valores reais e o mês que já tem
+   pró-labore lançado fica com o valor real — só os meses em aberto são
+   simulados. */
+let PROJ_CENARIO = 'ritmo';
+
+/* Base da projeção = último mês com algo lançado. Mês criado em branco lá na
+   frente não pode virar "histórico com R$ 0,00" — ele fica em aberto na simulação. */
+function baseProjecaoIdx() {
+  for (let i = STATE.months.length - 1; i >= 0; i--) {
+    const m = STATE.months[i];
+    if ((Number(m.faturamento) || 0) > 0 || (Number(m.proLabore) || 0) > 0) return i;
+  }
+  return STATE.months.length - 1;
+}
+
+function planoAtual() {
+  const idx = baseProjecaoIdx();
+  if (STATE.months[idx].regime !== 'ME') return { base: STATE.months[idx], plano: null };
+  return { base: STATE.months[idx], plano: planoProLabore(STATE.months, idx, STATE.params, STATE.params.fatProjecao, STATE.params.plPretendido) };
+}
+
 function renderProjecao() {
-  const baseIdx = STATE.months.length - 1;
-  const base = STATE.months[baseIdx];
+  const { base, plano: p } = planoAtual();
   setTopbar('Projeção', `Próximos 12 meses • a partir de ${monthLabel(base.key)}`);
 
-  if (base.regime !== 'ME') {
+  if (!p) {
     document.getElementById('content').innerHTML = `
       <div class="alert alert-info">
         <div class="insight-head">
@@ -723,23 +743,31 @@ function renderProjecao() {
     return;
   }
 
-  const p = planoProLabore(STATE.months, baseIdx, STATE.params, STATE.params.fatProjecao);
   const L = p.linhas;
   const metaPct = fmtPct(p.meta);
   const ultimo = L[L.length - 1].key;
-  const inicioNivel = p.reforcoBase ? L[1].key : L[0].key;
+  // primeiro mês em que o nível vale: pula os já lançados e o reforço do mês base
+  const inicioNivel = (L.find((l, i) => !l.real && !(i === 0 && p.reforcoBase)) || L[0]).key;
+  const listaMeses = ks => ks.map(monthLabel).join(', ').replace(/, ([^,]*)$/, ' e $1');
 
   const premissaHTML = `
-    <h2 class="section-title">Faturamento esperado</h2>
+    <h2 class="section-title">Premissas</h2>
     <div class="card">
+      <div class="field">
+        <label>Pró-labore que pretende tirar por mês</label>
+        <input type="text" inputmode="decimal" id="pj-pl" value="${p.ritmoAuto ? '' : numToInputMoney(p.plRitmo)}" placeholder="${numToInputMoney(p.ritmoMedio)} (média)">
+        <div class="hint">${p.ritmoAuto
+          ? (p.ritmoMeses.length ? `Em branco = média do que você tirou em ${listaMeses(p.ritmoMeses)}.` : 'Em branco = 1 salário mínimo.')
+          : 'Valor digitado por você. Apague para voltar à média dos últimos meses.'}</div>
+      </div>
       <div class="field" style="margin-bottom:0;">
         <label>Quanto você espera faturar por mês</label>
         <input type="text" inputmode="decimal" id="pj-fat" value="${p.fatAuto ? '' : numToInputMoney(p.fatProj)}" placeholder="${numToInputMoney(p.fatMedio)} (média)">
         <div class="hint">${p.fatAuto
           ? (p.mesesMedia ? `Em branco = média dos ${p.mesesMedia} ${p.mesesMedia === 1 ? 'mês' : 'meses'} com faturamento nos últimos 12.` : 'Nenhum faturamento lançado ainda — digite quanto espera faturar.')
-          : 'Valor digitado por você. Apague para voltar à média automática.'}
-          Meses já lançados usam o valor real.</div>
+          : 'Valor digitado por você. Apague para voltar à média automática.'}</div>
       </div>
+      <div class="note">Meses já lançados sempre usam os valores reais — faturamento e pró-labore.</div>
     </div>`;
 
   if (p.fatProj <= 0 && L.every(l => l.faturamento <= 0)) {
@@ -748,26 +776,39 @@ function renderProjecao() {
     return;
   }
 
-  /* ---------- o número principal ---------- */
-  const heroHTML = `
+  /* ---------- 1. o que acontece se continuar como está ---------- */
+  const f = p.falhaRitmo;
+  const ritmoHTML = `
     <div class="card proj-hero">
+      <div class="hero-label">Se continuar tirando</div>
+      <div class="proj-value">${fmtBRL(p.plRitmo)}<span>/mês</span></div>
+      <div class="proj-sub">${p.ritmoAuto && p.ritmoMeses.length ? `Média do que você tirou em <strong>${listaMeses(p.ritmoMeses)}</strong>.` : 'Valor que você digitou nas premissas.'}${p.temReal ? ' Meses com pró-labore já lançado entram com o valor real.' : ''}</div>
+      <div class="proj-status ${f ? 'bad' : 'ok'}">${f
+        ? `⚠️ Em <strong>${monthLabel(f.key)}</strong> o Fator R cai para <strong>${fmtPct(f.fatorR)}</strong> — ${monthLabel(f.anexoEm)} vai para o <strong>Anexo V</strong>.`
+        : `✅ O Fator R fica em ${metaPct} ou mais em todos os meses até ${monthLabel(ultimo)}.`}</div>
+    </div>`;
+
+  /* ---------- 2. o valor fixo que evita os saltos ---------- */
+  const abaixoMeta = key => L.filter(l => l[key] < p.meta - 1e-9).length;
+  const picoRitmo = Math.max(...L.map(l => l.ritmo));
+  const nivelHTML = `
+    <div class="card">
       <div class="hero-label">Pró-labore nivelado</div>
       <div class="proj-value">${fmtBRL(p.nivel)}<span>/mês</span></div>
-      <div class="proj-sub">Retirando esse valor todo mês de <strong>${monthLabel(inicioNivel)} a ${monthLabel(ultimo)}</strong>, o Fator R não fica abaixo de ${metaPct} em nenhum mês — e nenhum mês fica pesado.</div>
+      <div class="proj-sub">Retirando esse valor nos meses em aberto de <strong>${monthLabel(inicioNivel)} a ${monthLabel(ultimo)}</strong>, o Fator R não fica abaixo de ${metaPct} em nenhum mês — e nenhum mês fica pesado.</div>
       ${p.reforcoBase ? `<div class="proj-reforco">⚠️ <strong>${monthLabel(L[0].key)}</strong> precisa de <strong>${fmtBRL(p.reforcoBase)}</strong>: a conta já está abaixo da meta e esse reforço é para o mês que vem não cair no Anexo V.</div>` : ''}
       <table class="audit-tbl proj-cmp">
-        <thead><tr><th></th><th>Só o mínimo</th><th>Nivelado</th></tr></thead>
+        <thead><tr><th>R$</th><th>Seu ritmo</th><th>Só o mínimo</th><th>Nivelado</th></tr></thead>
         <tbody>
-          <tr><td>Maior retirada num mês</td><td class="${p.picoMinimo > p.picoNivelado + 0.5 ? 'proj-pico' : ''}">${fmtBRL(p.picoMinimo)}</td><td>${fmtBRL(p.picoNivelado)}</td></tr>
-          <tr><td>Pró-labore em 12 meses</td><td>${fmtBRL(p.totalMinimo)}</td><td>${fmtBRL(p.totalNivelado)}</td></tr>
-          <tr><td>INSS em 12 meses</td><td>${fmtBRL(p.inssMinimo)}</td><td>${fmtBRL(p.inssNivelado)}</td></tr>
+          <tr><td>Maior mês</td><td>${numToInputMoney(picoRitmo)}</td><td class="${p.picoMinimo > p.picoNivelado + 0.5 ? 'proj-pico' : ''}">${numToInputMoney(p.picoMinimo)}</td><td>${numToInputMoney(p.picoNivelado)}</td></tr>
+          <tr><td>12 meses</td><td>${numToInputMoney(p.totalRitmo)}</td><td>${numToInputMoney(p.totalMinimo)}</td><td>${numToInputMoney(p.totalNivelado)}</td></tr>
+          <tr><td>Meses &lt; ${metaPct}</td><td class="${abaixoMeta('fatorRRitmo') ? 'proj-ruim' : ''}">${abaixoMeta('fatorRRitmo')}</td><td>${abaixoMeta('fatorRMinimo')}</td><td>${abaixoMeta('fatorRNivelado')}</td></tr>
         </tbody>
       </table>
     </div>`;
 
-  /* ---------- por que o mínimo dá saltos (com o mês real que causa o salto) ---------- */
-  const piorIdx = L.reduce((a, l, i) => (l.minimo > L[a].minimo ? i : a), 0);
-  const pior = L[piorIdx];
+  /* ---------- 3. por que o mínimo dá saltos (com o mês real que causa o salto) ---------- */
+  const pior = L.reduce((a, l) => (l.minimo > a.minimo ? l : a), L[0]);
   const temSalto = pior.minimo > p.nivel + 0.5;
   const porqueHTML = `
     <div class="card">
@@ -775,7 +816,6 @@ function renderProjecao() {
       <div class="proj-text">O Fator R soma sempre os <strong>últimos 12 meses</strong>. Todo mês entra um mês novo e <strong>sai o mais antigo</strong>. Um pró-labore alto segura a conta por 12 meses — quando ele sai, deixa um buraco quase do mesmo tamanho.</div>
       ${temSalto && pior.sai ? `
         <div class="proj-text">No seu caso: em <strong>${monthLabel(pior.key)}</strong> sai da conta <strong>${monthLabel(pior.sai.key)}</strong>, quando você tirou <span class="n">${fmtBRL(pior.sai.proLabore)}</span>. Quem vai tirando só o mínimo até lá precisa repor de uma vez: <span class="n proj-pico">${fmtBRL(pior.minimo)}</span> naquele mês.</div>
-        <div class="proj-text">Nivelando, esse peso é dividido entre os meses: <span class="n">${fmtBRL(p.nivel)}</span> por mês. Custa <span class="n">${fmtBRL(Math.max(0, p.inssNivelado - p.inssMinimo))}</span> a mais de INSS no período, mas nenhum mês aperta o caixa — e o que passar da meta continua na conta, deixando o ano seguinte mais leve.</div>
       ` : `
         <div class="proj-text">Nos próximos 12 meses nenhum mês pesado sai da conta — tirar o mínimo não vai dar susto agora. Mesmo assim, ficar perto de ${metaPct} do faturamento de cada mês evita que o salto apareça mais pra frente.</div>
       `}
@@ -785,49 +825,91 @@ function renderProjecao() {
       </div>
     </div>`;
 
-  /* ---------- mês a mês ---------- */
-  const linhas = L.map(l => `
+  /* ---------- 4. mês a mês, um cenário por vez ---------- */
+  const CEN = {
+    ritmo: { label: 'Seu ritmo', pl: 'ritmo', fr: 'fatorRRitmo' },
+    nivelado: { label: 'Nivelado', pl: 'nivelado', fr: 'fatorRNivelado' },
+    minimo: { label: 'Só o mínimo', pl: 'minimo', fr: 'fatorRMinimo' },
+  };
+  if (!CEN[PROJ_CENARIO]) PROJ_CENARIO = 'ritmo';
+  const cen = CEN[PROJ_CENARIO];
+  const linhas = L.map(l => {
+    const ruim = l[cen.fr] < p.meta - 1e-9;
+    const pico = !l.real && l[cen.pl] > p.nivel + 0.5;
+    return `
     <tr>
       <td>${monthLabel(l.key)}${l.fatEstimado ? ' *' : ''}
-        ${l.sai ? `<div class="proj-sai ${l.sai.proLabore > p.nivel + 0.5 ? 'pesado' : ''}">sai ${monthLabel(l.sai.key)}: ${fmtBRL(l.sai.proLabore)}</div>` : ''}</td>
-      <td class="${l.minimo > p.nivel + 0.5 ? 'proj-pico' : ''}">${numToInputMoney(l.minimo)}<div class="proj-fr">${fmtPct(l.fatorRMinimo)}</div></td>
-      <td>${numToInputMoney(l.nivelado)}<div class="proj-fr">${fmtPct(l.fatorRNivelado)}</div></td>
-    </tr>`).join('');
+        ${l.sai ? `<div class="proj-sai ${l.sai.proLabore > p.nivel + 0.5 ? 'pesado' : ''}">sai ${monthLabel(l.sai.key)} · ${numToInputMoney(l.sai.proLabore)}</div>` : ''}</td>
+      <td class="${pico ? 'proj-pico' : ''}">${numToInputMoney(l[cen.pl])}<div class="proj-fr">${l.real ? '<span class="proj-real">lançado</span>' : 'simulado'}</div></td>
+      <td class="${ruim ? 'proj-ruim' : ''}">${fmtPct(l[cen.fr])}<div class="proj-fr">${ruim ? '→ Anexo V' : 'Anexo III'}</div></td>
+    </tr>`;
+  }).join('');
   const temEstimado = L.some(l => l.fatEstimado);
 
+  /* ---------- 5. a janela real de hoje: o que está na conta e quando sai ---------- */
+  const janelaHTML = `
+    <div class="card">
+      <details class="audit">
+        <summary>Seus últimos 12 meses lançados</summary>
+        <table class="audit-tbl proj-tbl">
+          <thead><tr><th>Mês</th><th>Faturam.</th><th>Pró-labore</th><th>Sai em</th></tr></thead>
+          <tbody>${p.janelaReal.map(j => `
+            <tr>
+              <td>${monthLabel(j.key)}${j.lancado ? '' : ' †'}</td>
+              <td>${numToInputMoney(j.faturamento)}</td>
+              <td class="${j.proLabore > p.nivel + 0.5 ? 'proj-pico' : j.proLabore === 0 ? 'audit-zero' : ''}">${numToInputMoney(j.proLabore)}</td>
+              <td>${monthLabel(j.saiEm)}</td>
+            </tr>`).join('')}</tbody>
+        </table>
+        <div class="note">É isso que a projeção usa como ponto de partida. "Sai em" é o mês em que aquele lançamento deixa a conta de 12 meses — um pró-labore alto (em laranja) faz falta a partir dali.${p.janelaReal.some(j => !j.lancado) ? ' † mês sem lançamento, conta como R$ 0,00.' : ''}</div>
+      </details>
+    </div>`;
+
   document.getElementById('content').innerHTML = `
-    ${heroHTML}
-    ${porqueHTML}
+    ${ritmoHTML}
+    ${nivelHTML}
 
     <div class="card">
-      <div class="panel-head"><div class="panel-title">Pró-labore mês a mês</div></div>
+      <div class="panel-head"><div class="panel-title">Mês a mês</div></div>
+      <div class="seg" style="margin-bottom:12px;">
+        ${Object.entries(CEN).map(([id, c]) => `<button data-cen="${id}" class="${id === PROJ_CENARIO ? 'on' : ''}">${c.label}</button>`).join('')}
+      </div>
       <div class="chart-legend">
-        <span class="item"><span class="legend-swatch" id="pj-sw-min"></span>Só o mínimo</span>
-        <span class="item"><span class="legend-swatch" id="pj-sw-niv"></span>Nivelado</span>
+        <span class="item"><span class="legend-swatch" id="pj-sw-real"></span>Lançado</span>
+        <span class="item"><span class="legend-swatch" id="pj-sw-sim"></span>Simulado</span>
+        <span class="item"><span class="legend-swatch" id="pj-sw-fr"></span>Fator R</span>
+        <span class="item"><span class="legend-swatch dashed"></span>Meta</span>
       </div>
       <div class="chart-box"><canvas id="chart-projecao"></canvas></div>
       <table class="audit-tbl proj-tbl">
-        <thead><tr><th>Mês</th><th>Só o mínimo</th><th>Nivelado</th></tr></thead>
+        <thead><tr><th>Mês</th><th>Pró-labore</th><th>Fator R</th></tr></thead>
         <tbody>${linhas}</tbody>
-        <tfoot><tr><td>Total (R$)</td><td>${numToInputMoney(p.totalMinimo)}</td><td>${numToInputMoney(p.totalNivelado)}</td></tr></tfoot>
       </table>
-      <div class="note">Valores em R$. Embaixo de cada um, o Fator R que fica para o mês seguinte. "Sai" é o mês que deixa a conta de 12 meses naquele momento.${temEstimado ? ` * faturamento estimado em ${fmtBRL(p.fatProj)} (mês ainda sem faturamento lançado).` : ''} Nenhum mês fica abaixo de 1 salário mínimo (${fmtBRL(p.piso)}).</div>
+      <div class="note">Valores em R$. O Fator R de cada linha é o que fica para o mês seguinte. "Sai" é o mês que deixa a conta de 12 meses naquele momento.${temEstimado ? ` * faturamento estimado em ${fmtBRL(p.fatProj)} (mês ainda sem faturamento lançado).` : ''}${PROJ_CENARIO !== 'ritmo' ? ` Nenhum mês simulado fica abaixo de 1 salário mínimo (${fmtBRL(p.piso)}).` : ''}</div>
     </div>
 
+    ${janelaHTML}
+    ${porqueHTML}
     ${premissaHTML}
 
     <div class="note">Projeção para planejamento, usando a mesma regra do PGDAS-D (12 meses anteriores). Confirme sempre com seu contador.</div>
   `;
 
   wireProjecao();
+  document.querySelectorAll('[data-cen]').forEach(b => b.addEventListener('click', () => {
+    PROJ_CENARIO = b.dataset.cen;
+    renderProjecao();
+  }));
 
   const ctx = document.getElementById('chart-projecao');
   const light = isLightMode();
-  const corMin = light ? '#0369A1' : '#38BDF8';
-  const corPico = light ? '#B45A0E' : '#F2B84B';
-  const corNiv = light ? '#7C3AED' : '#A78BFA';
-  document.getElementById('pj-sw-min').style.background = corMin;
-  document.getElementById('pj-sw-niv').style.background = corNiv;
+  const corReal = light ? '#0369A1' : '#38BDF8';
+  const corSim = light ? '#7C3AED' : '#A78BFA';
+  const corRuim = light ? '#E11D48' : '#FB7185';
+  const corFr = light ? '#15803D' : '#34D399';
+  document.getElementById('pj-sw-real').style.background = corReal;
+  document.getElementById('pj-sw-sim').style.background = corSim;
+  document.getElementById('pj-sw-fr').style.background = corFr;
   if (typeof Chart === 'undefined') {
     if (ctx) ctx.parentElement.remove();
     return;
@@ -835,34 +917,39 @@ function renderProjecao() {
   if (chartRef) chartRef.destroy();
   const tickColor = light ? '#5B5478' : '#6F5FA0';
   const gridColor = light ? 'rgba(40,20,80,0.10)' : '#241A4D';
+  const ruim = l => l[cen.fr] < p.meta - 1e-9;
   chartRef = new Chart(ctx, {
     data: {
       labels: L.map(l => monthLabel(l.key)),
       datasets: [
-        { type: 'line', label: 'Nivelado', data: L.map(l => +l.nivelado.toFixed(2)), borderColor: corNiv, borderWidth: 2.5, pointRadius: 0, tension: 0, fill: false },
-        { type: 'bar', label: 'Só o mínimo', data: L.map(l => +l.minimo.toFixed(2)),
-          backgroundColor: L.map(l => hexToRgba(l.minimo > p.nivel + 0.5 ? corPico : corMin, 0.75)), borderRadius: 4 },
+        { type: 'line', label: 'Fator R', yAxisID: 'fr', data: L.map(l => +(l[cen.fr] * 100).toFixed(2)), borderColor: corFr, borderWidth: 2, pointRadius: 3,
+          pointBackgroundColor: L.map(l => (ruim(l) ? corRuim : corFr)), pointBorderColor: L.map(l => (ruim(l) ? corRuim : corFr)), tension: .3, fill: false },
+        { type: 'line', label: 'Meta', yAxisID: 'fr', data: L.map(() => +(p.meta * 100).toFixed(2)), borderColor: corFr, borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+        { type: 'bar', label: 'Pró-labore', yAxisID: 'y', data: L.map(l => +l[cen.pl].toFixed(2)), backgroundColor: L.map(l => hexToRgba(l.real ? corReal : corSim, l.real ? 0.85 : 0.5)), borderRadius: 4 },
       ],
     },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${fmtBRL(c.parsed.y)}` } } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => (c.dataset.yAxisID === 'fr' ? `${c.dataset.label}: ${c.parsed.y.toFixed(1).replace('.', ',')}%` : `${c.dataset.label}: ${fmtBRL(c.parsed.y)}`) } } },
       scales: {
         x: { ticks: { color: tickColor, font: { size: 10 } }, grid: { display: false } },
-        y: { beginAtZero: true, ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => (v >= 1000 ? (v / 1000).toLocaleString('pt-BR') + 'k' : v) }, grid: { color: gridColor } },
+        y: { beginAtZero: true, position: 'left', ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => (v >= 1000 ? (v / 1000).toLocaleString('pt-BR') + 'k' : v) }, grid: { color: gridColor } },
+        fr: { beginAtZero: true, position: 'right', ticks: { color: tickColor, font: { size: 10 }, maxTicksLimit: 5, callback: v => v + '%' }, grid: { display: false } },
       },
     },
   });
 }
 
 function wireProjecao() {
-  document.getElementById('pj-fat').addEventListener('change', e => {
+  const bindPremissa = (id, field) => document.getElementById(id).addEventListener('change', e => {
     const raw = e.target.value.trim();
     const v = parseBRNumber(raw);
-    STATE.params.fatProjecao = raw === '' || isNaN(v) ? null : v;
+    STATE.params[field] = raw === '' || isNaN(v) ? null : v;
     persist();
     renderProjecao();
   });
+  bindPremissa('pj-fat', 'fatProjecao');
+  bindPremissa('pj-pl', 'plPretendido');
 }
 
 /* ============================== TAB: HISTÓRICO ============================== */

@@ -299,4 +299,41 @@ test('planoProLabore: faturamento esperado maior pede nível maior', () => {
   assert.ok(alto.nivel > auto.nivel);
 });
 
+test('planoProLabore: pró-labore já lançado no mês fica com o valor REAL em todos os cenários', () => {
+  const planoProLabore = get('planoProLabore');
+  const ms = mesesProjecao();
+  ms[ms.length - 1].proLabore = 3000; // set/26 já lançado
+  const p = planoProLabore(ms, ms.length - 1, params, null);
+  const l0 = p.linhas[0];
+  assert.ok(l0.real);
+  assert.strictEqual(l0.ritmo, 3000);
+  assert.strictEqual(l0.minimo, 3000);
+  assert.strictEqual(l0.nivelado, 3000);
+  assert.strictEqual(p.reforcoBase, 0, 'mês lançado não pede reforço');
+  assert.ok(p.linhas.slice(1).every(l => !l.real));
+});
+
+test('planoProLabore: "seu ritmo" usa a média dos últimos 3 meses lançados e acha o mês que fura', () => {
+  const planoProLabore = get('planoProLabore');
+  const ms = mesesProjecao();
+  ms[ms.length - 1].proLabore = 3000;
+  const p = planoProLabore(ms, ms.length - 1, params, null);
+  assert.strictEqual(p.ritmoMeses.join(','), '2026-07,2026-08,2026-09');
+  assert.ok(Math.abs(p.ritmoMedio - (1621 + 1621 + 3000) / 3) < 1e-9);
+  assert.ok(p.falhaRitmo, 'no ritmo de ~R$ 2 mil o Fator R tem que furar quando fev/mar saem');
+  assert.strictEqual(p.falhaRitmo.key, '2027-03');
+  assert.strictEqual(p.falhaRitmo.anexoEm, '2027-04');
+  // pretendendo o nível, não fura mais
+  const q = planoProLabore(ms, ms.length - 1, params, null, p.nivel);
+  assert.strictEqual(q.falhaRitmo, null);
+});
+
+test('planoProLabore: sem pró-labore lançado no mês base, ele fica fora da média do ritmo', () => {
+  const planoProLabore = get('planoProLabore');
+  const ms = mesesProjecao(); // set/26 com pró-labore 0 = ainda não decidido
+  const p = planoProLabore(ms, ms.length - 1, params, null);
+  assert.strictEqual(p.ritmoMeses.join(','), '2026-06,2026-07,2026-08');
+  assert.ok(!p.linhas[0].real);
+});
+
 console.log(`\n${passed} teste(s) passaram.`);

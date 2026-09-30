@@ -739,7 +739,7 @@ details.audit[open] > summary { color: var(--text); margin-bottom: 4px; }
 .proj-cmp td:first-child { font-family: var(--font-body); }
 .proj-tbl td { vertical-align: top; padding: 7px 0; }
 .proj-tbl td:first-child { color: var(--text); font-weight: 600; }
-.proj-sai { font-size: 10.5px; color: var(--text-faint); font-weight: 500; margin-top: 2px; }
+.proj-sai { white-space: nowrap; font-size: 10.5px; color: var(--text-faint); font-weight: 500; margin-top: 2px; }
 .proj-sai.pesado { color: var(--warning); font-weight: 600; }
 .proj-fr { font-size: 10px; color: var(--text-faint); font-weight: 500; margin-top: 2px; }
 .proj-tbl th:not(:first-child), .proj-tbl td:not(:first-child) { padding-left: 10px; white-space: nowrap; }
@@ -751,3 +751,10 @@ button.proj-mini { display: flex; align-items: center; gap: 12px; width: 100%; t
 .proj-mini-s strong { font-family: var(--font-mono); font-weight: 600; color: var(--text); }
 .proj-mini-s .proj-pico { color: var(--warning); }
 .proj-mini-go { font-size: 26px; line-height: 1; color: var(--text-faint); }
+.proj-cmp th:not(:first-child), .proj-cmp td:not(:first-child) { padding-left: 8px; white-space: nowrap; }
+.proj-status { font-size: 13px; line-height: 1.5; border-radius: 12px; padding: 9px 11px; margin-top: 12px; color: var(--text-dim); }
+.proj-status.ok { background: var(--success-soft); }
+.proj-status.bad { background: var(--danger-soft); }
+.proj-status strong { color: var(--text); }
+.audit-tbl td.proj-ruim, .proj-mini-s .proj-ruim { color: var(--danger); font-weight: 700; }
+.proj-real { color: var(--primary); font-weight: 600; }

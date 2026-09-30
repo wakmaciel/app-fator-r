@@ -32,11 +32,15 @@ navegador** (localStorage). Nada é enviado para nenhum servidor.
 - **Projeção dos próximos 12 meses** (aba Projeção): o mínimo da Home só olha
   o mês seguinte, mas a janela anda — todo mês entra um e sai o de 12 meses
   atrás. Um mês com pró-labore alto segura o Fator R por um ano e, quando sai
-  da conta, o mínimo dá um salto quase do mesmo tamanho. A aba mostra, mês a
-  mês, qual mês está saindo, quanto seria o "só o mínimo" (com os saltos) e o
-  **pró-labore nivelado**: o menor valor fixo por mês que nunca deixa o Fator R
-  cair abaixo da meta. O faturamento dos meses futuros usa a média dos últimos
-  12 meses ou um valor que você digitar.
+  da conta, o mínimo dá um salto quase do mesmo tamanho. A projeção parte dos
+  **meses lançados** (o pró-labore já lançado fica com o valor real) e mostra
+  três cenários mês a mês: **seu ritmo** (a média do que você tirou nos últimos
+  3 meses, ou o valor que pretende tirar — avisa em que mês cairia no Anexo V),
+  **só o mínimo** (com os saltos) e o **pró-labore nivelado**: o menor valor
+  fixo por mês que nunca deixa o Fator R cair abaixo da meta. Também lista os
+  12 meses reais que estão na conta e em que mês cada um sai dela. O
+  faturamento dos meses futuros usa a média dos últimos 12 meses ou um valor
+  que você digitar.
 - **Fechamento anual em CSV**: exporta uma planilha com todos os meses de um
   ano (faturamento, pró-labore, DAS, INSS, despesas, lucro, Fator R) — ótimo
   para guardar no fim do ano ou mandar para o contador.
